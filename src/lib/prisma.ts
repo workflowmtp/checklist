@@ -10,10 +10,6 @@ function buildDatabaseUrl(): string {
     if (!base.includes('connection_limit')) {
       base = base + separator + POOL_PARAMS;
     }
-    // Force SSL in production (required by most cloud DB providers)
-    if (process.env.NODE_ENV === 'production' && !base.includes('sslmode')) {
-      base += '&sslmode=require';
-    }
     return base;
   }
 
