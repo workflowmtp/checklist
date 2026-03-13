@@ -12,20 +12,25 @@ async function loadPermissions(): Promise<Map<Role, string[]>> {
     return permissionsCache;
   }
 
-  const rolePerms = await prisma.rolePermission.findMany({
-    include: { permission: true },
-  });
+  try {
+    const rolePerms = await prisma.rolePermission.findMany({
+      include: { permission: true },
+    });
 
-  const map = new Map<Role, string[]>();
-  for (const rp of rolePerms) {
-    const existing = map.get(rp.role) || [];
-    existing.push(rp.permission.code);
-    map.set(rp.role, existing);
+    const map = new Map<Role, string[]>();
+    for (const rp of rolePerms) {
+      const existing = map.get(rp.role) || [];
+      existing.push(rp.permission.code);
+      map.set(rp.role, existing);
+    }
+
+    permissionsCache = map;
+    cacheTimestamp = now;
+    return map;
+  } catch (error) {
+    console.error('Failed to load permissions from DB:', error);
+    return new Map<Role, string[]>();
   }
-
-  permissionsCache = map;
-  cacheTimestamp = now;
-  return map;
 }
 
 export function invalidatePermissionsCache() {

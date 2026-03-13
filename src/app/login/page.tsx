@@ -21,18 +21,24 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
 
-    const result = await signIn('credentials', {
-      email: e,
-      password: p,
-      redirect: false,
-    });
+    try {
+      const result = await signIn('credentials', {
+        email: e,
+        password: p,
+        redirect: false,
+        callbackUrl: '/',
+      });
 
-    setLoading(false);
+      if (result?.ok && !result?.error) {
+        window.location.href = '/';
+        return;
+      }
 
-    if (result?.error) {
-      setError(result.error);
-    } else {
-      window.location.href = '/';
+      setLoading(false);
+      setError(result?.error || 'Échec de la connexion. Vérifiez vos identifiants.');
+    } catch (err: any) {
+      setLoading(false);
+      setError('Erreur réseau. Réessayez.');
     }
   };
 
