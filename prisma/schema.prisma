@@ -1,0 +1,536 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// RÉFÉRENTIELS
+// ============================================================
+
+model Pole {
+  id          String   @id @default(cuid())
+  nom         String
+  icone       String   @default("🏭")
+  couleur     String   @default("#3b82f6")
+  description String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  ateliers    Atelier[]
+  machines    Machine[]
+  operateurs  Operateur[]
+  dossiers    Dossier[]
+  checkpoints Checkpoint[]
+  users       User[]       @relation("UserPole")
+
+  @@map("poles")
+}
+
+model Atelier {
+  id          String  @id @default(cuid())
+  poleId      String  @map("pole_id")
+  nom         String
+  description String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  pole             Pole              @relation(fields: [poleId], references: [id], onDelete: Cascade)
+  machineAteliers  MachineAtelier[]
+  operateurAteliers OperateurAtelier[]
+  dossiers         Dossier[]
+  users            User[]            @relation("UserAtelier")
+
+  @@map("ateliers")
+}
+
+model Machine {
+  id           String  @id @default(cuid())
+  poleId       String  @map("pole_id")
+  nom          String
+  codeMachine  String  @map("code_machine")
+  description  String?
+  actif        Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  pole             Pole              @relation(fields: [poleId], references: [id], onDelete: Cascade)
+  machineAteliers  MachineAtelier[]
+  familleTaches    FamilleTache[]
+  tacheModeles     TacheModele[]
+  dossiers         Dossier[]
+  declarations     DeclarationProduction[]
+
+  @@map("machines")
+}
+
+model MachineAtelier {
+  id        String @id @default(cuid())
+  machineId String @map("machine_id")
+  atelierId String @map("atelier_id")
+
+  machine Machine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  atelier Atelier @relation(fields: [atelierId], references: [id], onDelete: Cascade)
+
+  @@unique([machineId, atelierId])
+  @@map("machine_atelier")
+}
+
+model Operateur {
+  id        String  @id @default(cuid())
+  poleId    String  @map("pole_id")
+  nom       String
+  matricule String?
+  actif     Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  pole              Pole               @relation(fields: [poleId], references: [id], onDelete: Cascade)
+  operateurAteliers OperateurAtelier[]
+  dossierOperateurs DossierOperateur[]
+  passationsFrom    Passation[]        @relation("PassationFrom")
+  passationsTo      Passation[]        @relation("PassationTo")
+
+  @@map("operateurs")
+}
+
+model OperateurAtelier {
+  id          String @id @default(cuid())
+  operateurId String @map("operateur_id")
+  atelierId   String @map("atelier_id")
+
+  operateur Operateur @relation(fields: [operateurId], references: [id], onDelete: Cascade)
+  atelier   Atelier   @relation(fields: [atelierId], references: [id], onDelete: Cascade)
+
+  @@unique([operateurId, atelierId])
+  @@map("operateur_atelier")
+}
+
+// ============================================================
+// UTILISATEURS & AUTH
+// ============================================================
+
+model User {
+  id          String  @id @default(cuid())
+  email       String  @unique
+  nom         String
+  motDePasse  String  @map("mot_de_passe")
+  role        Role
+  poleId      String? @map("pole_id")
+  atelierId   String? @map("atelier_id")
+  actif       Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  pole    Pole?    @relation("UserPole", fields: [poleId], references: [id], onDelete: SetNull)
+  atelier Atelier? @relation("UserAtelier", fields: [atelierId], references: [id], onDelete: SetNull)
+
+  dossiersCreated   Dossier[]              @relation("DossierCreatedBy")
+  dossiersClosed    Dossier[]              @relation("DossierClosedBy")
+  declarations      DeclarationProduction[]
+  arretsCreated     Arret[]                @relation("ArretCreatedBy")
+  arretsResumed     Arret[]                @relation("ArretResumedBy")
+  controlesAuthored ControleProduction[]
+  tachesValidated   TacheDossier[]
+  logs              LogAction[]
+
+  @@map("users")
+}
+
+enum Role {
+  ADMINISTRATEUR       @map("administrateur")
+  RESPONSABLE_POLE     @map("responsable_pole")
+  CHEF_ATELIER         @map("chef_atelier")
+  CONDUCTEUR           @map("conducteur")
+  MAINTENANCE          @map("maintenance")
+  CONTROLE_QUALITE     @map("controle_qualite")
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  code        String           @unique
+  libelle     String
+  description String?
+  groupe      String           @default("general")
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String     @id @default(cuid())
+  role         Role
+  permissionId String     @map("permission_id")
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([role, permissionId])
+  @@map("role_permissions")
+}
+
+// ============================================================
+// CAUSES D'ARRÊT & CHECKPOINTS
+// ============================================================
+
+model CauseArret {
+  id      String  @id @default(cuid())
+  code    String  @unique
+  libelle String
+  actif   Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  arretCauses ArretCause[]
+
+  @@map("causes_arret")
+}
+
+model Checkpoint {
+  id          String  @id @default(cuid())
+  code        String  @unique
+  libelle     String
+  categorie   String?
+  poleId      String? @map("pole_id")
+  obligatoire Boolean @default(false)
+  actif       Boolean @default(true)
+  description String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  pole Pole? @relation(fields: [poleId], references: [id], onDelete: SetNull)
+
+  @@map("checkpoints")
+}
+
+// ============================================================
+// TÂCHES MODÈLES
+// ============================================================
+
+model FamilleTache {
+  id        String @id @default(cuid())
+  machineId String @map("machine_id")
+  nom       String
+  ordre     Int    @default(1)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  machine      Machine       @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  tacheModeles TacheModele[]
+
+  @@map("familles_taches")
+}
+
+model TacheModele {
+  id            String  @id @default(cuid())
+  machineId     String  @map("machine_id")
+  familleId     String? @map("famille_id")
+  code          String
+  libelle       String
+  position      Int     @default(1)
+  tempsPrevuMin Int     @default(0) @map("temps_prevu_min")
+  bloquante     Boolean @default(false)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  machine       Machine       @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  famille       FamilleTache? @relation(fields: [familleId], references: [id], onDelete: SetNull)
+  tachesDossier TacheDossier[]
+
+  @@map("taches_modele")
+}
+
+// ============================================================
+// DOSSIERS DE FABRICATION
+// ============================================================
+
+model Dossier {
+  id                String        @id @default(cuid())
+  dossierNumero     String        @unique @map("dossier_numero")
+  sessionNumero     Int           @default(1) @map("session_numero")
+  dateDossier       DateTime      @map("date_dossier") @db.Date
+  ofNumero          String?       @map("of_numero")
+  referenceCommande String?       @map("reference_commande")
+  client            String?
+  poleId            String        @map("pole_id")
+  atelierId         String        @map("atelier_id")
+  machineId         String        @map("machine_id")
+  designation       String
+  quantiteCommandee Int           @map("quantite_commandee")
+  unite             String        @default("feuilles")
+  statut            StatutDossier @default(EN_ATTENTE)
+  dateDebut         DateTime?     @map("date_debut")
+  dateFin           DateTime?     @map("date_fin")
+  creeParId         String?       @map("cree_par")
+  clotureParId      String?       @map("cloture_par")
+  commentaireCloture String?      @map("commentaire_cloture")
+  observations      String?
+
+  // Sage X3 integration fields
+  sageX3OfId       String? @map("sage_x3_of_id")
+  sageX3Site       String? @map("sage_x3_site")
+  sageX3Article    String? @map("sage_x3_article")
+  sageX3Lot        String? @map("sage_x3_lot")
+  sageX3StatusSync String  @default("none") @map("sage_x3_status_sync")
+  sageX3LastSyncAt DateTime? @map("sage_x3_last_sync_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  pole       Pole    @relation(fields: [poleId], references: [id])
+  atelier    Atelier @relation(fields: [atelierId], references: [id])
+  machine    Machine @relation(fields: [machineId], references: [id])
+  creePar    User?   @relation("DossierCreatedBy", fields: [creeParId], references: [id], onDelete: SetNull)
+  cloturePar User?   @relation("DossierClosedBy", fields: [clotureParId], references: [id], onDelete: SetNull)
+
+  dossierOperateurs  DossierOperateur[]
+  taches             TacheDossier[]
+  declarations       DeclarationProduction[]
+  arrets             Arret[]
+  controles          ControleProduction[]
+  passations         Passation[]
+
+  @@map("dossiers")
+}
+
+enum StatutDossier {
+  EN_ATTENTE @map("en_attente")
+  EN_COURS   @map("en_cours")
+  EN_PAUSE   @map("en_pause")
+  CLOTURE    @map("cloture")
+
+  @@map("statut_dossier")
+}
+
+model DossierOperateur {
+  id          String @id @default(cuid())
+  dossierId   String @map("dossier_id")
+  operateurId String @map("operateur_id")
+  role        String @default("Conducteur principal")
+
+  dossier   Dossier   @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+  operateur Operateur @relation(fields: [operateurId], references: [id], onDelete: Cascade)
+
+  @@map("dossier_operateur")
+}
+
+// ============================================================
+// TÂCHES DOSSIER (instanciées)
+// ============================================================
+
+model TacheDossier {
+  id             String       @id @default(cuid())
+  dossierId      String       @map("dossier_id")
+  tacheModeleId  String?      @map("tache_modele_id")
+  code           String
+  libelle        String
+  famille        String?
+  position       Int          @default(1)
+  tempsPrevuMin  Int          @default(0) @map("temps_prevu_min")
+  tempsReelMs    Int          @default(0) @map("temps_reel_ms")
+  statut         StatutTache  @default(EN_ATTENTE)
+  bloquante      Boolean      @default(false)
+  commentaire    String?
+  dateDebut      DateTime?    @map("date_debut")
+  datePause      DateTime?    @map("date_pause")
+  dateReprise    DateTime?    @map("date_reprise")
+  dateValidation DateTime?    @map("date_validation")
+  valideParId    String?      @map("valide_par")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  dossier     Dossier      @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+  tacheModele TacheModele? @relation(fields: [tacheModeleId], references: [id], onDelete: SetNull)
+  validePar   User?        @relation(fields: [valideParId], references: [id], onDelete: SetNull)
+
+  @@map("taches_dossier")
+}
+
+enum StatutTache {
+  EN_ATTENTE     @map("en_attente")
+  EN_COURS       @map("en_cours")
+  EN_PAUSE       @map("en_pause")
+  CONFORME       @map("conforme")
+  NON_CONFORME   @map("non_conforme")
+
+  @@map("statut_tache")
+}
+
+// ============================================================
+// DÉCLARATIONS DE PRODUCTION
+// ============================================================
+
+model DeclarationProduction {
+  id            String  @id @default(cuid())
+  dossierId     String  @map("dossier_id")
+  machineId     String  @map("machine_id")
+  bonnes        Int     @default(0)
+  calage        Int     @default(0)
+  gache         Int     @default(0)
+  totalEngage   Int     @default(0) @map("total_engage")
+  motifGache    String? @map("motif_gache")
+  etatTirage    String  @default("conforme") @map("etat_tirage")
+  declareParId  String? @map("declare_par")
+
+  dateDeclaration DateTime @default(now()) @map("date_declaration")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  dossier   Dossier @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+  machine   Machine @relation(fields: [machineId], references: [id])
+  declarePar User?  @relation(fields: [declareParId], references: [id], onDelete: SetNull)
+
+  @@map("declarations_production")
+}
+
+// ============================================================
+// ARRÊTS / INCIDENTS
+// ============================================================
+
+model Arret {
+  id                 String       @id @default(cuid())
+  dossierId          String       @map("dossier_id")
+  dateDebut          DateTime     @map("date_debut")
+  dateFin            DateTime?    @map("date_fin")
+  dureeMs            Int?         @map("duree_ms")
+  commentaireArret   String?      @map("commentaire_arret")
+  commentaireReprise String?      @map("commentaire_reprise")
+  statut             StatutArret  @default(ACTIF)
+  creeParId          String?      @map("cree_par")
+  reprisParId        String?      @map("repris_par")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  dossier    Dossier      @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+  creePar    User?        @relation("ArretCreatedBy", fields: [creeParId], references: [id], onDelete: SetNull)
+  reprisPar  User?        @relation("ArretResumedBy", fields: [reprisParId], references: [id], onDelete: SetNull)
+  arretCauses ArretCause[]
+
+  @@map("arrets")
+}
+
+enum StatutArret {
+  ACTIF   @map("actif")
+  TERMINE @map("termine")
+
+  @@map("statut_arret")
+}
+
+model ArretCause {
+  id       String @id @default(cuid())
+  arretId  String @map("arret_id")
+  causeId  String @map("cause_id")
+
+  arret Arret      @relation(fields: [arretId], references: [id], onDelete: Cascade)
+  cause CauseArret @relation(fields: [causeId], references: [id], onDelete: Cascade)
+
+  @@unique([arretId, causeId])
+  @@map("arret_cause")
+}
+
+// ============================================================
+// CONTRÔLES DE PRODUCTION
+// ============================================================
+
+model ControleProduction {
+  id          String  @id @default(cuid())
+  dossierId   String  @map("dossier_id")
+  resultat    String  @default("bon") // bon | mauvais
+  commentaire String?
+  auteurId    String? @map("auteur_id")
+  detailsJson String? @map("details_json")
+
+  dateControle DateTime @default(now()) @map("date_controle")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  dossier Dossier @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+  auteur  User?   @relation(fields: [auteurId], references: [id], onDelete: SetNull)
+
+  @@map("controles_production")
+}
+
+// ============================================================
+// PASSATIONS
+// ============================================================
+
+model Passation {
+  id               String  @id @default(cuid())
+  dossierId        String  @map("dossier_id")
+  sessionSortante  Int     @map("session_sortante")
+  sessionEntrante  Int     @map("session_entrante")
+  deOperateurId    String? @map("de_operateur")
+  versOperateurId  String? @map("vers_operateur")
+  note             String?
+  bonnes           Int     @default(0)
+  calage           Int     @default(0)
+  gache            Int     @default(0)
+  total            Int     @default(0)
+
+  heurePassation DateTime @map("heure_passation")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  dossier       Dossier    @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+  deOperateur   Operateur? @relation("PassationFrom", fields: [deOperateurId], references: [id], onDelete: SetNull)
+  versOperateur Operateur? @relation("PassationTo", fields: [versOperateurId], references: [id], onDelete: SetNull)
+
+  @@map("passations")
+}
+
+// ============================================================
+// LOGS & INTÉGRATION
+// ============================================================
+
+model LogAction {
+  id            String  @id @default(cuid())
+  utilisateurId String? @map("utilisateur_id")
+  typeAction    String  @map("type_action")
+  entite        String
+  entiteId      String? @map("entite_id")
+  detailsJson   String? @map("details_json")
+
+  dateAction DateTime @default(now()) @map("date_action")
+
+  utilisateur User? @relation(fields: [utilisateurId], references: [id], onDelete: SetNull)
+
+  @@map("logs_actions")
+}
+
+model ParametreIntegration {
+  id          String  @id @default(cuid())
+  typeSysteme String  @map("type_systeme")
+  actif       Boolean @default(false)
+  configJson  String  @map("config_json")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("parametres_integration")
+}
+
+model SyncQueue {
+  id            String  @id @default(cuid())
+  typeEntite    String  @map("type_entite")
+  entiteId      String? @map("entite_id")
+  action        String
+  payloadJson   String? @map("payload_json")
+  statut        String  @default("pending")
+  messageErreur String? @map("message_erreur")
+  dateTentative DateTime? @map("date_tentative")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("sync_queue")
+}
