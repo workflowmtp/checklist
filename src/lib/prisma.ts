@@ -1,14 +1,18 @@
 import { PrismaClient } from '@prisma/client';
 
-const POOL_PARAMS = 'connection_limit=5&pool_timeout=30&connect_timeout=10&keepalives=1&keepalives_idle=30';
+const POOL_PARAMS = 'connection_limit=5&pool_timeout=30&connect_timeout=10';
 
 function buildDatabaseUrl(): string {
   if (process.env.DATABASE_URL) {
-    const base = process.env.DATABASE_URL;
-    // Strip existing pool/connection params to avoid duplicates
+    let base = process.env.DATABASE_URL;
     const separator = base.includes('?') ? '&' : '?';
+    // Add pool params if missing
     if (!base.includes('connection_limit')) {
-      return base + separator + POOL_PARAMS;
+      base = base + separator + POOL_PARAMS;
+    }
+    // Force SSL in production (required by most cloud DB providers)
+    if (process.env.NODE_ENV === 'production' && !base.includes('sslmode')) {
+      base += '&sslmode=require';
     }
     return base;
   }

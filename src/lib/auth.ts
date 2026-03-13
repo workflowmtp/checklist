@@ -17,47 +17,55 @@ export const authOptions: NextAuthOptions = {
           throw new Error('Veuillez remplir tous les champs');
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
-          include: {
-            pole: { select: { id: true, nom: true, icone: true, couleur: true } },
-            atelier: { select: { id: true, nom: true } },
-          },
-        });
+        try {
+          const user = await prisma.user.findUnique({
+            where: { email: credentials.email },
+            include: {
+              pole: { select: { id: true, nom: true, icone: true, couleur: true } },
+              atelier: { select: { id: true, nom: true } },
+            },
+          });
 
-        if (!user || !user.actif) {
-          throw new Error('Email ou mot de passe incorrect');
+          if (!user || !user.actif) {
+            throw new Error('Email ou mot de passe incorrect');
+          }
+
+          const isValid = await bcrypt.compare(credentials.password, user.motDePasse);
+          if (!isValid) {
+            throw new Error('Email ou mot de passe incorrect');
+          }
+
+          // Log action (non-blocking)
+          prisma.logAction.create({
+            data: {
+              utilisateurId: user.id,
+              typeAction: 'login',
+              entite: 'users',
+              entiteId: user.id,
+              detailsJson: JSON.stringify({ email: user.email }),
+            },
+          }).catch(() => {});
+
+          const permissions = await getPermissionsForRole(user.role);
+
+          return {
+            id: user.id,
+            name: user.nom,
+            email: user.email,
+            role: user.role,
+            permissions,
+            poleId: user.poleId,
+            atelierId: user.atelierId,
+            pole: user.pole,
+            atelier: user.atelier,
+          };
+        } catch (error: any) {
+          console.error('Auth error:', error.message);
+          if (error.message.includes('Email ou mot de passe') || error.message.includes('Veuillez')) {
+            throw error;
+          }
+          throw new Error('Erreur de connexion au serveur. Réessayez.');
         }
-
-        const isValid = await bcrypt.compare(credentials.password, user.motDePasse);
-        if (!isValid) {
-          throw new Error('Email ou mot de passe incorrect');
-        }
-
-        // Log action
-        await prisma.logAction.create({
-          data: {
-            utilisateurId: user.id,
-            typeAction: 'login',
-            entite: 'users',
-            entiteId: user.id,
-            detailsJson: JSON.stringify({ email: user.email }),
-          },
-        });
-
-        const permissions = await getPermissionsForRole(user.role);
-
-        return {
-          id: user.id,
-          name: user.nom,
-          email: user.email,
-          role: user.role,
-          permissions,
-          poleId: user.poleId,
-          atelierId: user.atelierId,
-          pole: user.pole,
-          atelier: user.atelier,
-        };
       },
     }),
   ],
