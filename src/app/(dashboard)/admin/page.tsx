@@ -26,11 +26,16 @@ export default function AdminPage() {
   const [isPending, startTransition] = useTransition();
   const [allPermissions, setAllPermissions] = useState<any[]>([]);
   const [rolePermsMap, setRolePermsMap] = useState<Record<string, Set<string>>>({});
+  const [poles, setPoles] = useState<any[]>([]);
 
   useEffect(() => { loadData(); }, [tab]);
   const loadData = async () => {
     const d = await getAdminData(tab);
     setData(d as any[]);
+    if (['ateliers', 'machines', 'operateurs', 'checkpoints', 'users'].includes(tab)) {
+      const p = await getAdminData('poles') as any[];
+      setPoles(p);
+    }
     if (tab === 'role-permissions') {
       const perms = await getAdminData('permissions') as any[];
       setAllPermissions(perms);
@@ -243,6 +248,211 @@ export default function AdminPage() {
           )}
         </div>
       </div>
+
+      {/* ============ MODAL ============ */}
+      {modal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setModal(null)}>
+          <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-xl p-6 w-full max-w-[500px] max-h-[90vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-mono font-bold text-lg">{modal.id ? 'Modifier' : 'Nouveau'} — {TABS.find((t) => t.id === tab)?.label}</h3>
+              <button onClick={() => setModal(null)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-[var(--bg-tertiary)] text-lg">✕</button>
+            </div>
+
+            {/* POLES */}
+            {tab === 'poles' && (
+              <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); handleSave(savePole, [modal.id || null, { nom: f.get('nom') as string, icone: f.get('icone') as string, couleur: f.get('couleur') as string, description: f.get('description') as string || undefined }]); }}>
+                <div className="space-y-3">
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Nom *</label>
+                    <input name="nom" defaultValue={modal.nom || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Icône *</label>
+                    <input name="icone" defaultValue={modal.icone || '🏭'} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Couleur *</label>
+                    <input name="couleur" type="color" defaultValue={modal.couleur || '#3b82f6'} required className="w-16 h-10 border border-[var(--border-primary)] rounded-md cursor-pointer" /></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Description</label>
+                    <textarea name="description" defaultValue={modal.description || ''} rows={2} className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
+                </div>
+                <div className="flex justify-end gap-2 mt-5">
+                  <button type="button" onClick={() => setModal(null)} className="px-4 py-2 rounded-md text-[0.85rem] border border-[var(--border-primary)] hover:bg-[var(--bg-tertiary)]">Annuler</button>
+                  <button type="submit" disabled={isPending} className="px-4 py-2 rounded-md font-semibold text-white text-[0.85rem] btn-gradient-blue disabled:opacity-50">{isPending ? 'Enregistrement...' : 'Enregistrer'}</button>
+                </div>
+              </form>
+            )}
+
+            {/* ATELIERS */}
+            {tab === 'ateliers' && (
+              <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); handleSave(saveAtelier, [modal.id || null, { nom: f.get('nom') as string, poleId: f.get('poleId') as string, description: f.get('description') as string || undefined }]); }}>
+                <div className="space-y-3">
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Nom *</label>
+                    <input name="nom" defaultValue={modal.nom || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Pôle *</label>
+                    <select name="poleId" defaultValue={modal.poleId || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring">
+                      <option value="">Sélectionner...</option>
+                      {poles.map((p: any) => <option key={p.id} value={p.id}>{p.icone} {p.nom}</option>)}
+                    </select></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Description</label>
+                    <textarea name="description" defaultValue={modal.description || ''} rows={2} className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
+                </div>
+                <div className="flex justify-end gap-2 mt-5">
+                  <button type="button" onClick={() => setModal(null)} className="px-4 py-2 rounded-md text-[0.85rem] border border-[var(--border-primary)] hover:bg-[var(--bg-tertiary)]">Annuler</button>
+                  <button type="submit" disabled={isPending} className="px-4 py-2 rounded-md font-semibold text-white text-[0.85rem] btn-gradient-blue disabled:opacity-50">{isPending ? 'Enregistrement...' : 'Enregistrer'}</button>
+                </div>
+              </form>
+            )}
+
+            {/* MACHINES */}
+            {tab === 'machines' && (
+              <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); handleSave(saveMachine, [modal.id || null, { codeMachine: f.get('codeMachine') as string, nom: f.get('nom') as string, poleId: f.get('poleId') as string, description: f.get('description') as string || undefined, actif: f.get('actif') === 'on' }]); }}>
+                <div className="space-y-3">
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Code machine *</label>
+                    <input name="codeMachine" defaultValue={modal.codeMachine || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring font-mono" /></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Nom *</label>
+                    <input name="nom" defaultValue={modal.nom || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Pôle *</label>
+                    <select name="poleId" defaultValue={modal.poleId || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring">
+                      <option value="">Sélectionner...</option>
+                      {poles.map((p: any) => <option key={p.id} value={p.id}>{p.icone} {p.nom}</option>)}
+                    </select></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Description</label>
+                    <textarea name="description" defaultValue={modal.description || ''} rows={2} className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
+                  <div className="flex items-center gap-2">
+                    <input name="actif" type="checkbox" defaultChecked={modal.actif !== false} className="w-4 h-4 accent-[var(--accent-blue)]" />
+                    <label className="text-[0.85rem]">Actif</label>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 mt-5">
+                  <button type="button" onClick={() => setModal(null)} className="px-4 py-2 rounded-md text-[0.85rem] border border-[var(--border-primary)] hover:bg-[var(--bg-tertiary)]">Annuler</button>
+                  <button type="submit" disabled={isPending} className="px-4 py-2 rounded-md font-semibold text-white text-[0.85rem] btn-gradient-blue disabled:opacity-50">{isPending ? 'Enregistrement...' : 'Enregistrer'}</button>
+                </div>
+              </form>
+            )}
+
+            {/* OPERATEURS */}
+            {tab === 'operateurs' && (
+              <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); handleSave(saveOperateur, [modal.id || null, { nom: f.get('nom') as string, matricule: f.get('matricule') as string || undefined, poleId: f.get('poleId') as string, actif: f.get('actif') === 'on' }]); }}>
+                <div className="space-y-3">
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Nom *</label>
+                    <input name="nom" defaultValue={modal.nom || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Matricule</label>
+                    <input name="matricule" defaultValue={modal.matricule || ''} className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring font-mono" /></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Pôle *</label>
+                    <select name="poleId" defaultValue={modal.poleId || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring">
+                      <option value="">Sélectionner...</option>
+                      {poles.map((p: any) => <option key={p.id} value={p.id}>{p.icone} {p.nom}</option>)}
+                    </select></div>
+                  <div className="flex items-center gap-2">
+                    <input name="actif" type="checkbox" defaultChecked={modal.actif !== false} className="w-4 h-4 accent-[var(--accent-blue)]" />
+                    <label className="text-[0.85rem]">Actif</label>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 mt-5">
+                  <button type="button" onClick={() => setModal(null)} className="px-4 py-2 rounded-md text-[0.85rem] border border-[var(--border-primary)] hover:bg-[var(--bg-tertiary)]">Annuler</button>
+                  <button type="submit" disabled={isPending} className="px-4 py-2 rounded-md font-semibold text-white text-[0.85rem] btn-gradient-blue disabled:opacity-50">{isPending ? 'Enregistrement...' : 'Enregistrer'}</button>
+                </div>
+              </form>
+            )}
+
+            {/* CAUSES D'ARRET */}
+            {tab === 'causes' && (
+              <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); handleSave(saveCause, [modal.id || null, { code: f.get('code') as string, libelle: f.get('libelle') as string, actif: f.get('actif') === 'on' }]); }}>
+                <div className="space-y-3">
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Code *</label>
+                    <input name="code" defaultValue={modal.code || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring font-mono" /></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Libellé *</label>
+                    <input name="libelle" defaultValue={modal.libelle || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
+                  <div className="flex items-center gap-2">
+                    <input name="actif" type="checkbox" defaultChecked={modal.actif !== false} className="w-4 h-4 accent-[var(--accent-blue)]" />
+                    <label className="text-[0.85rem]">Actif</label>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 mt-5">
+                  <button type="button" onClick={() => setModal(null)} className="px-4 py-2 rounded-md text-[0.85rem] border border-[var(--border-primary)] hover:bg-[var(--bg-tertiary)]">Annuler</button>
+                  <button type="submit" disabled={isPending} className="px-4 py-2 rounded-md font-semibold text-white text-[0.85rem] btn-gradient-blue disabled:opacity-50">{isPending ? 'Enregistrement...' : 'Enregistrer'}</button>
+                </div>
+              </form>
+            )}
+
+            {/* CHECKPOINTS */}
+            {tab === 'checkpoints' && (
+              <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); handleSave(saveCheckpoint, [modal.id || null, { code: f.get('code') as string, libelle: f.get('libelle') as string, categorie: f.get('categorie') as string || undefined, poleId: (f.get('poleId') as string) || null, obligatoire: f.get('obligatoire') === 'on', actif: f.get('actif') === 'on', description: f.get('description') as string || undefined }]); }}>
+                <div className="space-y-3">
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Code *</label>
+                    <input name="code" defaultValue={modal.code || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring font-mono" /></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Libellé *</label>
+                    <input name="libelle" defaultValue={modal.libelle || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Catégorie</label>
+                    <input name="categorie" defaultValue={modal.categorie || ''} className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Pôle</label>
+                    <select name="poleId" defaultValue={modal.poleId || ''} className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring">
+                      <option value="">Tous les pôles</option>
+                      {poles.map((p: any) => <option key={p.id} value={p.id}>{p.icone} {p.nom}</option>)}
+                    </select></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Description</label>
+                    <textarea name="description" defaultValue={modal.description || ''} rows={2} className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
+                  <div className="flex gap-4">
+                    <div className="flex items-center gap-2"><input name="obligatoire" type="checkbox" defaultChecked={modal.obligatoire || false} className="w-4 h-4 accent-[var(--accent-orange)]" /><label className="text-[0.85rem]">Obligatoire</label></div>
+                    <div className="flex items-center gap-2"><input name="actif" type="checkbox" defaultChecked={modal.actif !== false} className="w-4 h-4 accent-[var(--accent-blue)]" /><label className="text-[0.85rem]">Actif</label></div>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 mt-5">
+                  <button type="button" onClick={() => setModal(null)} className="px-4 py-2 rounded-md text-[0.85rem] border border-[var(--border-primary)] hover:bg-[var(--bg-tertiary)]">Annuler</button>
+                  <button type="submit" disabled={isPending} className="px-4 py-2 rounded-md font-semibold text-white text-[0.85rem] btn-gradient-blue disabled:opacity-50">{isPending ? 'Enregistrement...' : 'Enregistrer'}</button>
+                </div>
+              </form>
+            )}
+
+            {/* USERS */}
+            {tab === 'users' && (
+              <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); handleSave(saveUser, [modal.id || null, { email: f.get('email') as string, nom: f.get('nom') as string, motDePasse: (f.get('motDePasse') as string) || undefined, role: f.get('role') as string, poleId: (f.get('poleId') as string) || null, atelierId: null, actif: f.get('actif') === 'on' }]); }}>
+                <div className="space-y-3">
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Email *</label>
+                    <input name="email" type="email" defaultValue={modal.email || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Nom *</label>
+                    <input name="nom" defaultValue={modal.nom || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Mot de passe {modal.id ? '(laisser vide pour ne pas changer)' : '*'}</label>
+                    <input name="motDePasse" type="password" required={!modal.id} className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Rôle *</label>
+                    <select name="role" defaultValue={modal.role || 'CONDUCTEUR'} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring">
+                      {getAllRoles().map((r) => <option key={r} value={r}>{getRoleLabel(r)}</option>)}
+                    </select></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Pôle</label>
+                    <select name="poleId" defaultValue={modal.poleId || ''} className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring">
+                      <option value="">Aucun (Global)</option>
+                      {poles.map((p: any) => <option key={p.id} value={p.id}>{p.icone} {p.nom}</option>)}
+                    </select></div>
+                  <div className="flex items-center gap-2">
+                    <input name="actif" type="checkbox" defaultChecked={modal.actif !== false} className="w-4 h-4 accent-[var(--accent-blue)]" />
+                    <label className="text-[0.85rem]">Actif</label>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 mt-5">
+                  <button type="button" onClick={() => setModal(null)} className="px-4 py-2 rounded-md text-[0.85rem] border border-[var(--border-primary)] hover:bg-[var(--bg-tertiary)]">Annuler</button>
+                  <button type="submit" disabled={isPending} className="px-4 py-2 rounded-md font-semibold text-white text-[0.85rem] btn-gradient-blue disabled:opacity-50">{isPending ? 'Enregistrement...' : 'Enregistrer'}</button>
+                </div>
+              </form>
+            )}
+
+            {/* PERMISSIONS */}
+            {tab === 'permissions' && (
+              <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); handleSave(savePermission, [modal.id || null, { code: f.get('code') as string, libelle: f.get('libelle') as string, groupe: f.get('groupe') as string, description: f.get('description') as string || undefined }]); }}>
+                <div className="space-y-3">
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Code *</label>
+                    <input name="code" defaultValue={modal.code || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring font-mono" /></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Libellé *</label>
+                    <input name="libelle" defaultValue={modal.libelle || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Groupe *</label>
+                    <input name="groupe" defaultValue={modal.groupe || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
+                  <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Description</label>
+                    <textarea name="description" defaultValue={modal.description || ''} rows={2} className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
+                </div>
+                <div className="flex justify-end gap-2 mt-5">
+                  <button type="button" onClick={() => setModal(null)} className="px-4 py-2 rounded-md text-[0.85rem] border border-[var(--border-primary)] hover:bg-[var(--bg-tertiary)]">Annuler</button>
+                  <button type="submit" disabled={isPending} className="px-4 py-2 rounded-md font-semibold text-white text-[0.85rem] btn-gradient-blue disabled:opacity-50">{isPending ? 'Enregistrement...' : 'Enregistrer'}</button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
