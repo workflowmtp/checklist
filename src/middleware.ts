@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 
-export async function middleware(req: NextRequest) {
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+const isProduction = process.env.NODE_ENV === 'production';
 
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Allow public routes
@@ -19,6 +19,15 @@ export async function middleware(req: NextRequest) {
   ) {
     return NextResponse.next();
   }
+
+  const token = await getToken({
+    req,
+    secret: process.env.NEXTAUTH_SECRET,
+    secureCookie: isProduction,
+    cookieName: isProduction
+      ? '__Secure-next-auth.session-token'
+      : 'next-auth.session-token',
+  });
 
   // Redirect to login if no token
   if (!token) {
