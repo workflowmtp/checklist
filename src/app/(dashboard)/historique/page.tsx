@@ -8,74 +8,101 @@ import { getStatutDossierLabel, formatNumber } from '@/lib/utils';
 export default function HistoriquePage() {
   const router = useRouter();
   const [filters, setFilters] = useState({ pole: '', machine: '', statut: '', search: '', dateFrom: '', dateTo: '' });
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { loadData(); }, [filters]);
   const loadData = async () => { setLoading(true); const r = await getHistoriqueData(filters); setData(r); setLoading(false); };
   const updateFilter = (key: string, val: string) => setFilters({ ...filters, [key]: val });
 
+  const dossiers: any[] = data?.dossiers || data || [];
+  const poles: any[] = data?.poles || [];
+  const machines: any[] = data?.machines || [];
+
   return (
     <div>
-      <h1 className="font-mono text-[1.5rem] font-bold mb-1">📜 Historique des dossiers</h1>
-      <p className="text-[var(--text-secondary)] text-[0.9rem] mb-6">Recherche multicritère dans tous les dossiers</p>
+      <div className="page-title">📜 Historique des dossiers</div>
+      <div className="page-subtitle">Recherche multicritère dans tous les dossiers</div>
 
-      <div className="flex flex-wrap gap-2.5 p-4 bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-md mb-5 items-end">
-        {[
-          { k: 'statut', l: 'Statut', type: 'select', opts: [['', 'Tous'], ['EN_COURS', 'En cours'], ['EN_ATTENTE', 'En attente'], ['CLOTURE', 'Clôturé']] },
-          { k: 'search', l: 'Recherche', type: 'text', ph: 'Dossier, OF, client...' },
-          { k: 'dateFrom', l: 'Du', type: 'date' },
-          { k: 'dateTo', l: 'Au', type: 'date' },
-        ].map((f) => (
-          <div key={f.k} className="min-w-[140px]">
-            <label className="block text-[0.7rem] font-semibold text-[var(--text-secondary)] mb-1 uppercase">{f.l}</label>
-            {f.type === 'select' ? (
-              <select value={(filters as any)[f.k]} onChange={(e) => updateFilter(f.k, e.target.value)}
-                className="w-full px-2.5 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.82rem]">
-                {f.opts?.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            ) : (
-              <input type={f.type} value={(filters as any)[f.k]} onChange={(e) => updateFilter(f.k, e.target.value)} placeholder={f.ph}
-                className="w-full px-2.5 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.82rem]" />
-            )}
-          </div>
-        ))}
-        <button onClick={() => setFilters({ pole: '', machine: '', statut: '', search: '', dateFrom: '', dateTo: '' })}
-          className="px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded-md text-[0.82rem]">Réinitialiser</button>
+      <div className="history-filters">
+        <div className="form-group"><label>Pôle</label>
+          <select value={filters.pole} onChange={(e) => updateFilter('pole', e.target.value)} className="form-input">
+            <option value="">Tous</option>
+            {poles.map((p: any) => <option key={p.id} value={p.id}>{p.icone} {p.nom}</option>)}
+          </select>
+        </div>
+        <div className="form-group"><label>Machine</label>
+          <select value={filters.machine} onChange={(e) => updateFilter('machine', e.target.value)} className="form-input">
+            <option value="">Toutes</option>
+            {machines.map((m: any) => <option key={m.id} value={m.id}>{m.codeMachine}</option>)}
+          </select>
+        </div>
+        <div className="form-group"><label>Statut</label>
+          <select value={filters.statut} onChange={(e) => updateFilter('statut', e.target.value)} className="form-input">
+            <option value="">Tous</option>
+            <option value="EN_COURS">En cours</option>
+            <option value="EN_ATTENTE">En attente</option>
+            <option value="CLOTURE">Clôturé</option>
+          </select>
+        </div>
+        <div className="form-group"><label>N° Dossier / OF</label>
+          <input type="text" value={filters.search} onChange={(e) => updateFilter('search', e.target.value)} placeholder="Rechercher..." className="form-input" />
+        </div>
+        <div className="form-group"><label>Du</label>
+          <input type="date" value={filters.dateFrom} onChange={(e) => updateFilter('dateFrom', e.target.value)} className="form-input" />
+        </div>
+        <div className="form-group"><label>Au</label>
+          <input type="date" value={filters.dateTo} onChange={(e) => updateFilter('dateTo', e.target.value)} className="form-input" />
+        </div>
+        <button onClick={() => setFilters({ pole: '', machine: '', statut: '', search: '', dateFrom: '', dateTo: '' })} className="btn btn-sm btn-secondary">Réinitialiser</button>
       </div>
 
-      <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg p-5">
-        <div className="font-mono font-bold text-base mb-3.5">📋 Résultats <span className="text-[0.7rem] px-2 py-0.5 bg-[var(--bg-tertiary)] rounded-full text-[var(--text-tertiary)]">{data.length}</span></div>
-        {loading ? <div className="text-center py-8 text-[var(--text-tertiary)]">Chargement...</div> :
-         data.length === 0 ? <div className="text-center py-8 text-[var(--text-tertiary)]">Aucun dossier trouvé</div> : (
-          <div className="overflow-x-auto"><table className="w-full border-collapse"><thead><tr>
-            {['Date','Dossier','OF','Client','Pôle','Machine','Désignation','Qté','Statut'].map((h) => <th key={h} className="text-left px-3 py-2 text-[0.7rem] font-bold uppercase tracking-wider text-[var(--text-tertiary)] border-b border-[var(--border-primary)]">{h}</th>)}
+      <div className="section-block">
+        <div className="section-block-title">📋 Résultats <span className="record-count">({dossiers.length} dossiers)</span></div>
+        {loading ? <div className="empty-state" style={{ padding: 30 }}><div className="empty-state-text">Chargement...</div></div> :
+         dossiers.length === 0 ? (
+          <div className="empty-state" style={{ padding: 30 }}><div className="empty-state-icon">🔍</div><div className="empty-state-text">Aucun dossier trouvé avec ces critères</div></div>
+        ) : (<>
+          <table className="data-table"><thead><tr>
+            <th>Date</th><th>Dossier</th><th>OF</th><th>Client</th><th>Pôle</th><th>Machine</th><th>Désignation</th><th>Qté</th><th>Statut</th>
           </tr></thead><tbody>
-            {data.map((d: any) => {
+            {dossiers.map((d: any) => {
               const totE = d.declarations?.reduce((s: number, dp: any) => s + (dp.totalEngage || 0), 0) || 0;
               return (
-                <tr key={d.id} className="hover:bg-[var(--accent-blue-dim)] cursor-pointer" onClick={() => router.push(`/dossier/${d.id}`)}>
-                  <td className="px-3 py-2 text-[0.78rem] border-b border-[var(--border-primary)] font-mono whitespace-nowrap">{d.dateDossier ? new Date(d.dateDossier).toLocaleDateString('fr-FR') : '—'}</td>
-                  <td className="px-3 py-2 text-[0.85rem] border-b border-[var(--border-primary)] font-mono font-semibold">{d.dossierNumero}</td>
-                  <td className="px-3 py-2 text-[0.85rem] border-b border-[var(--border-primary)]">{d.ofNumero || '—'}</td>
-                  <td className="px-3 py-2 text-[0.85rem] border-b border-[var(--border-primary)]">{d.client || '—'}</td>
-                  <td className="px-3 py-2 text-[0.85rem] border-b border-[var(--border-primary)]">{d.pole?.icone} {d.pole?.nom}</td>
-                  <td className="px-3 py-2 text-[0.8rem] border-b border-[var(--border-primary)]">{d.machine?.codeMachine}</td>
-                  <td className="px-3 py-2 text-[0.85rem] border-b border-[var(--border-primary)] max-w-[200px] truncate">{d.designation}</td>
-                  <td className="px-3 py-2 text-[0.8rem] border-b border-[var(--border-primary)] font-mono">{formatNumber(totE)}/{formatNumber(d.quantiteCommandee)}</td>
-                  <td className="px-3 py-2 text-[0.85rem] border-b border-[var(--border-primary)]">
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-[0.7rem] font-semibold uppercase ${
-                      d.statut === 'EN_COURS' ? 'bg-[var(--accent-green-dim)] text-[var(--accent-green)]' :
-                      d.statut === 'CLOTURE' ? 'bg-[var(--accent-blue-dim)] text-[var(--accent-blue)]' :
-                      'bg-[var(--accent-orange-dim)] text-[var(--accent-orange)]'
-                    }`}>{getStatutDossierLabel(d.statut)}</span>
-                  </td>
+                <tr key={d.id} className="history-row-clickable" onClick={() => router.push(`/dossier/${d.id}`)}>
+                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>{d.dateDossier ? new Date(d.dateDossier).toLocaleDateString('fr-FR') : '—'}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{d.dossierNumero}</td>
+                  <td>{d.ofNumero || '—'}</td>
+                  <td>{d.client || '—'}</td>
+                  <td>{d.pole?.icone} {d.pole?.nom}</td>
+                  <td style={{ fontSize: '0.8rem' }}>{d.machine?.codeMachine || '—'}</td>
+                  <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.designation}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>{formatNumber(totE)}/{formatNumber(d.quantiteCommandee)}</td>
+                  <td><span className={`status-badge ${d.statut === 'EN_COURS' ? 'active' : d.statut === 'CLOTURE' ? 'closed' : 'paused'}`}>{getStatutDossierLabel(d.statut)}</span></td>
                 </tr>
               );
             })}
-          </tbody></table></div>
-        )}
+          </tbody></table>
+        </>)}
       </div>
+
+      {/* Summary stats — matching static v9.1 */}
+      {!loading && dossiers.length > 0 && (() => {
+        let nbEnCours = 0, nbCloture = 0, totalQteCmd = 0;
+        dossiers.forEach((d: any) => {
+          if (d.statut === 'EN_COURS') nbEnCours++;
+          if (d.statut === 'CLOTURE') nbCloture++;
+          totalQteCmd += d.quantiteCommandee || 0;
+        });
+        return (
+          <div className="kpi-row" style={{ marginTop: 16 }}>
+            <div className="kpi-card"><div className="kpi-card-label">Total dossiers</div><div className="kpi-card-value">{dossiers.length}</div></div>
+            <div className="kpi-card"><div className="kpi-card-label">En cours</div><div className="kpi-card-value" style={{ color: 'var(--accent-green)' }}>{nbEnCours}</div></div>
+            <div className="kpi-card"><div className="kpi-card-label">Clôturés</div><div className="kpi-card-value" style={{ color: 'var(--accent-blue)' }}>{nbCloture}</div></div>
+            <div className="kpi-card"><div className="kpi-card-label">Qté totale commandée</div><div className="kpi-card-value">{formatNumber(totalQteCmd)}</div></div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

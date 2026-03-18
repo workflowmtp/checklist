@@ -51,14 +51,13 @@ export default function ConfigTachesPage() {
 
   return (
     <div>
-      <h1 className="font-mono text-[1.5rem] font-bold mb-1">🔧 Configuration des tâches</h1>
-      <p className="text-[var(--text-secondary)] text-[0.9rem] mb-6">Définir les familles et tâches modèles par machine</p>
+      <div className="page-title">🔧 Configuration des tâches</div>
+      <div className="page-subtitle">Définir les familles et tâches modèles par machine</div>
 
-      <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg p-5 mb-5">
-        <div className="max-w-[400px]">
-          <label className="block text-[0.8rem] font-semibold text-[var(--text-secondary)] mb-1.5 uppercase">Machine</label>
-          <select value={machineId} onChange={(e) => setMachineId(e.target.value)}
-            className="w-full px-3 py-3 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[var(--text-primary)]">
+      <div className="section-block">
+        <div className="form-group" style={{ maxWidth: '400px' }}>
+          <label>Machine</label>
+          <select value={machineId} onChange={(e) => setMachineId(e.target.value)} className="form-input">
             <option value="">— Sélectionner une machine —</option>
             {data.machines.map((m: any) => <option key={m.id} value={m.id}>{m.pole?.icone} {m.codeMachine} — {m.nom}</option>)}
           </select>
@@ -68,9 +67,9 @@ export default function ConfigTachesPage() {
       {machineId && (
         <>
           {/* Familles */}
-          <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg p-5 mb-5">
-            <div className="flex items-center justify-between mb-3.5">
-              <div className="font-mono font-bold text-base">📂 Familles de tâches <span className="text-[0.7rem] px-2 py-0.5 bg-[var(--bg-tertiary)] rounded-full text-[var(--text-tertiary)]">{data.familles.length}</span></div>
+          <div className="section-block">
+            <div className="section-block-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>📂 Familles de tâches <span className="accordion-badge">{data.familles.length}</span></span>
               <button onClick={() => { setShowFamForm(!showFamForm); setFamForm({ nom: '', ordre: (data.familles.length || 0) + 1 }); }}
                 className="px-4 py-2 rounded-md font-semibold text-white text-[0.85rem] btn-gradient-blue">+ Nouvelle famille</button>
             </div>
@@ -100,9 +99,9 @@ export default function ConfigTachesPage() {
           </div>
 
           {/* Tâches modèles */}
-          <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg p-5">
-            <div className="flex items-center justify-between mb-3.5">
-              <div className="font-mono font-bold text-base">📋 Tâches modèles <span className="text-[0.7rem] px-2 py-0.5 bg-[var(--bg-tertiary)] rounded-full text-[var(--text-tertiary)]">{data.taches.length}</span></div>
+          <div className="section-block">
+            <div className="section-block-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>📋 Tâches modèles <span className="accordion-badge">{data.taches.length}</span></span>
               <button onClick={() => { setShowTacheForm(!showTacheForm); setTacheForm({ code: '', libelle: '', familleId: '', position: (data.taches.length || 0) + 1, tempsPrevuMin: 0, bloquante: false }); }}
                 className="px-4 py-2 rounded-md font-semibold text-white text-[0.85rem] btn-gradient-blue">+ Nouvelle tâche modèle</button>
             </div>

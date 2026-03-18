@@ -14,74 +14,87 @@ export default async function AtelierPage({ params }: { params: { id: string } }
 
   return (
     <div>
-      <div className="flex items-center gap-4 p-5 bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg mb-6" style={{ borderLeft: `4px solid ${p.couleur}` }}>
-        <Link href={`/pole/${p.id}`} className="w-9 h-9 rounded-md flex items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] text-lg">←</Link>
-        <div className="w-14 h-14 rounded-md flex items-center justify-center text-[26px]" style={{ background: `${p.couleur}20`, color: p.couleur }}>🏗️</div>
-        <div className="flex-1"><div className="font-mono font-bold text-[1.3rem]">{atelier.nom}</div><div className="text-[0.85rem] text-[var(--text-secondary)]">{atelier.description} — {p.nom}</div></div>
+      {/* Header */}
+      <div className="pole-detail-header" style={{ borderLeft: `4px solid ${p.couleur}` }}>
+        <Link href={`/pole/${p.id}`} className="btn-icon" title="Retour au pôle" style={{ flexShrink: 0, fontSize: '1.1rem' }}>←</Link>
+        <div className="pole-detail-icon" style={{ background: `${p.couleur}20`, color: p.couleur }}>🏗️</div>
+        <div style={{ flex: 1 }}>
+          <div className="pole-detail-title">{atelier.nom}</div>
+          <div className="pole-detail-desc">{atelier.description} — {p.nom}</div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5 mb-6">
-        {[
-          { l: 'En cours', v: dosActifs.length, c: 'var(--accent-green)' },
-          { l: 'En attente', v: dosAttente.length, c: 'var(--accent-orange)' },
-          { l: 'Clôturés', v: clotures, c: 'var(--accent-blue)' },
-          { l: 'Machines', v: machines.length },
-          { l: 'Opérateurs', v: ops.length },
-        ].map((k) => (
-          <div key={k.l} className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-md p-4">
-            <div className="text-[0.72rem] text-[var(--text-tertiary)] uppercase tracking-wider mb-1.5">{k.l}</div>
-            <div className="font-mono text-[1.6rem] font-bold" style={{ color: k.c }}>{k.v}</div>
-          </div>
-        ))}
+      {/* KPI */}
+      <div className="kpi-row">
+        <div className="kpi-card"><div className="kpi-card-label">En cours</div><div className="kpi-card-value" style={{ color: 'var(--accent-green)' }}>{dosActifs.length}</div></div>
+        <div className="kpi-card"><div className="kpi-card-label">En attente</div><div className="kpi-card-value" style={{ color: 'var(--accent-orange)' }}>{dosAttente.length}</div></div>
+        <div className="kpi-card"><div className="kpi-card-label">Clôturés</div><div className="kpi-card-value" style={{ color: 'var(--accent-blue)' }}>{clotures}</div></div>
+        <div className="kpi-card"><div className="kpi-card-label">Machines</div><div className="kpi-card-value">{machines.length}</div></div>
+        <div className="kpi-card"><div className="kpi-card-label">Opérateurs</div><div className="kpi-card-value">{ops.length}</div></div>
       </div>
 
-      <div className="flex flex-wrap gap-2.5 mb-5">
-        <Link href={`/dossier/nouveau?atelier_id=${atelier.id}&pole_id=${p.id}`} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-md font-semibold text-white btn-gradient-blue text-[0.9rem]">+ Nouveau dossier</Link>
+      {/* Quick Actions */}
+      <div className="quick-actions">
+        <Link href={`/dossier/nouveau?atelier_id=${atelier.id}&pole_id=${p.id}`} className="btn btn-primary">+ Nouveau dossier</Link>
       </div>
 
       {/* Dossiers */}
-      <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg p-5 mb-5">
-        <div className="font-mono font-bold text-base mb-3.5">📋 Dossiers en cours <span className="text-[0.7rem] px-2 py-0.5 bg-[var(--bg-tertiary)] rounded-full text-[var(--text-tertiary)]">{atelier.dossiers.length}</span></div>
-        {atelier.dossiers.length === 0 ? <div className="text-center py-5 text-[var(--text-tertiary)]">Aucun dossier actif</div> : (
-          <div className="overflow-x-auto"><table className="w-full border-collapse"><thead><tr>
-            {['Dossier','OF','Client','Machine','Désignation','Statut'].map((h) => <th key={h} className="text-left px-3.5 py-2.5 text-[0.7rem] font-bold uppercase tracking-wider text-[var(--text-tertiary)] border-b border-[var(--border-primary)]">{h}</th>)}
+      <div className="section-block">
+        <div className="section-block-title">📋 Dossiers en cours <span className="accordion-badge">{atelier.dossiers.length}</span></div>
+        {atelier.dossiers.length === 0 ? <div className="empty-state"><div className="empty-state-text">Aucun dossier actif dans cet atelier</div></div> : (
+          <div className="overflow-x-auto"><table className="data-table"><thead><tr>
+            {['Dossier','OF','Client','Machine','Désignation','Qté commandée','Statut'].map((h) => <th key={h}>{h}</th>)}
           </tr></thead><tbody>
             {atelier.dossiers.map((d) => (
-              <tr key={d.id} className="hover:bg-[var(--bg-tertiary)]">
-                <td className="px-3.5 py-2.5 text-[0.85rem] border-b border-[var(--border-primary)]"><Link href={`/dossier/${d.id}`} className="font-mono font-semibold hover:text-[var(--accent-blue)]">{d.dossierNumero}</Link></td>
-                <td className="px-3.5 py-2.5 text-[0.85rem] border-b border-[var(--border-primary)]">{d.ofNumero || '—'}</td>
-                <td className="px-3.5 py-2.5 text-[0.85rem] border-b border-[var(--border-primary)]">{d.client || '—'}</td>
-                <td className="px-3.5 py-2.5 text-[0.85rem] border-b border-[var(--border-primary)]">{d.machine?.codeMachine || '—'}</td>
-                <td className="px-3.5 py-2.5 text-[0.85rem] border-b border-[var(--border-primary)] max-w-[200px] truncate">{d.designation}</td>
-                <td className="px-3.5 py-2.5 text-[0.85rem] border-b border-[var(--border-primary)]">
-                  <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[0.72rem] font-semibold uppercase ${d.statut === 'EN_COURS' ? 'bg-[var(--accent-green-dim)] text-[var(--accent-green)]' : 'bg-[var(--accent-orange-dim)] text-[var(--accent-orange)]'}`}>{getStatutDossierLabel(d.statut)}</span>
-                </td>
+              <tr key={d.id} style={{ cursor: 'pointer' }}>
+                <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}><Link href={`/dossier/${d.id}`} className="hover:text-[var(--accent-blue)]">{d.dossierNumero}</Link></td>
+                <td>{d.ofNumero || '—'}</td>
+                <td>{d.client || '—'}</td>
+                <td>{d.machine?.codeMachine || '—'}</td>
+                <td>{d.designation}</td>
+                <td style={{ fontFamily: 'var(--font-mono)' }}>{d.quantiteCommandee?.toLocaleString('fr-FR') || '0'} {d.unite || ''}</td>
+                <td><span className={`status-badge ${d.statut === 'EN_COURS' ? 'active' : 'paused'}`}>{getStatutDossierLabel(d.statut)}</span></td>
               </tr>
             ))}
           </tbody></table></div>
         )}
       </div>
 
-      {/* Machines + Ops */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg p-5">
-          <div className="font-mono font-bold text-base mb-3.5">🖨️ Machines <span className="text-[0.7rem] px-2 py-0.5 bg-[var(--bg-tertiary)] rounded-full text-[var(--text-tertiary)]">{machines.length}</span></div>
-          {machines.map((m) => (
-            <div key={m.id} className="flex items-center justify-between py-2 border-b border-[var(--border-primary)] last:border-0 text-[0.85rem]">
-              <span><span className="font-mono font-semibold">{m.codeMachine}</span> — {m.nom}</span>
-              <span className={`inline-flex px-2 py-0.5 rounded-full text-[0.72rem] font-semibold uppercase ${m.actif ? 'bg-[var(--accent-green-dim)] text-[var(--accent-green)]' : 'bg-[var(--accent-red-dim)] text-[var(--accent-red)]'}`}>{m.actif ? 'Actif' : 'Inactif'}</span>
-            </div>
-          ))}
-        </div>
-        <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg p-5">
-          <div className="font-mono font-bold text-base mb-3.5">👷 Opérateurs <span className="text-[0.7rem] px-2 py-0.5 bg-[var(--bg-tertiary)] rounded-full text-[var(--text-tertiary)]">{ops.length}</span></div>
-          {ops.map((o) => (
-            <div key={o.id} className="flex items-center justify-between py-2 border-b border-[var(--border-primary)] last:border-0 text-[0.85rem]">
-              <span className="font-semibold">{o.nom}</span>
-              <span className="font-mono text-[var(--text-tertiary)] text-[0.8rem]">{o.matricule || '—'}</span>
-            </div>
-          ))}
-        </div>
+      {/* Machines */}
+      <div className="section-block">
+        <div className="section-block-title">🖨️ Machines affectées <span className="accordion-badge">{machines.length}</span></div>
+        {machines.length === 0 ? <div className="empty-state"><div className="empty-state-text">Aucune machine affectée</div></div> : (
+          <div className="overflow-x-auto"><table className="data-table"><thead><tr>
+            {['Code','Nom','Description','Statut'].map((h) => <th key={h}>{h}</th>)}
+          </tr></thead><tbody>
+            {machines.map((m) => (
+              <tr key={m.id}>
+                <td style={{ fontFamily: 'var(--font-mono)' }}>{m.codeMachine}</td>
+                <td style={{ fontWeight: 600 }}>{m.nom}</td>
+                <td>{m.description || '—'}</td>
+                <td><span className={`status-badge ${m.actif ? 'active' : 'stopped'}`}>{m.actif ? 'Actif' : 'Inactif'}</span></td>
+              </tr>
+            ))}
+          </tbody></table></div>
+        )}
+      </div>
+
+      {/* Opérateurs */}
+      <div className="section-block">
+        <div className="section-block-title">👷 Opérateurs affectés <span className="accordion-badge">{ops.length}</span></div>
+        {ops.length === 0 ? <div className="empty-state"><div className="empty-state-text">Aucun opérateur affecté</div></div> : (
+          <div className="overflow-x-auto"><table className="data-table"><thead><tr>
+            {['Nom','Matricule','Statut'].map((h) => <th key={h}>{h}</th>)}
+          </tr></thead><tbody>
+            {ops.map((o) => (
+              <tr key={o.id}>
+                <td style={{ fontWeight: 600 }}>{o.nom}</td>
+                <td style={{ fontFamily: 'var(--font-mono)' }}>{o.matricule || '—'}</td>
+                <td><span className={`status-badge ${o.actif ? 'active' : 'stopped'}`}>{o.actif ? 'Actif' : 'Inactif'}</span></td>
+              </tr>
+            ))}
+          </tbody></table></div>
+        )}
       </div>
     </div>
   );

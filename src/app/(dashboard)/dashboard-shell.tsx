@@ -6,12 +6,17 @@ import AiChat from '@/components/AiChat';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 
-export function DashboardShell({ children }: { children: React.ReactNode }) {
+interface DashboardShellProps {
+  children: React.ReactNode;
+  poles?: { id: string; nom: string; icone: string }[];
+}
+
+export function DashboardShell({ children, poles = [] }: DashboardShellProps) {
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar />
+      <Sidebar poles={poles} />
       <div
         className={cn(
           'flex-1 flex flex-col overflow-hidden transition-all duration-300',

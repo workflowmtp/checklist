@@ -4,6 +4,26 @@ import { useState, useEffect, useTransition } from 'react';
 import { toast } from 'sonner';
 import { getERPData, saveERPConfig, simulateERPImport } from '@/lib/actions';
 
+const MAPPING = [
+  { x3: 'MFGTRKNUM', ps: 'dossier.of_numero', dir: 'X3 → PrintSeq', ready: true },
+  { x3: 'ITMREF', ps: 'dossier.sage_x3_article', dir: 'X3 → PrintSeq', ready: true },
+  { x3: 'LOT', ps: 'dossier.sage_x3_lot', dir: 'X3 → PrintSeq', ready: true },
+  { x3: 'EXTQTY', ps: 'dossier.quantite_commandee', dir: 'X3 → PrintSeq', ready: true },
+  { x3: 'CPLQTY', ps: 'declarations.total_engage', dir: 'PrintSeq → X3', ready: true },
+  { x3: 'REJQTY', ps: 'declarations.gache', dir: 'PrintSeq → X3', ready: true },
+  { x3: 'TIMOPE', ps: 'taches.temps_reel_ms', dir: 'PrintSeq → X3', ready: true },
+  { x3: 'RSTFLG (Arrêt)', ps: 'arrets.duree_ms', dir: 'PrintSeq → X3', ready: false },
+];
+
+const FUTURE_FEATURES = [
+  '📥 Import automatique des OF depuis Sage X3',
+  '📤 Remontée automatique des temps et quantités',
+  '🔄 Synchronisation bidirectionnelle des données maîtres',
+  '📋 Journal des échanges avec traçabilité complète',
+  '🔌 Mode offline avec synchronisation différée',
+  '⚠️ Détection d\'erreurs et relance manuelle',
+];
+
 export default function ERPPage() {
   const [data, setData] = useState<any>(null);
   const [form, setForm] = useState({ url: '', site: 'DLA', database: '', user: '' });
@@ -27,47 +47,95 @@ export default function ERPPage() {
 
   if (!data) return <div className="text-center py-12 text-[var(--text-tertiary)]">Chargement...</div>;
 
+  const pendingSync = data.syncQueue?.filter((s: any) => s.statut === 'pending') || [];
+  const errorSync = data.syncQueue?.filter((s: any) => s.statut === 'error') || [];
+
   return (
     <div>
-      <h1 className="font-mono text-[1.5rem] font-bold mb-1">🔗 Intégration ERP — Sage X3</h1>
-      <p className="text-[var(--text-secondary)] text-[0.9rem] mb-6">Pré-intégration et synchronisation</p>
+      <div className="page-title">🔗 Intégration ERP — Sage X3</div>
+      <div className="page-subtitle">Pré-intégration et synchronisation avec l&apos;ERP</div>
 
-      <div className="flex items-center gap-4 p-4 bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-md mb-5">
-        <div className="w-12 h-12 rounded-md flex items-center justify-center text-2xl" style={{ background: data.config?.actif ? 'var(--accent-green-dim)' : 'var(--accent-orange-dim)', color: data.config?.actif ? 'var(--accent-green)' : 'var(--accent-orange)' }}>🔗</div>
-        <div className="flex-1"><h4 className="font-bold">Sage X3 {data.config?.actif ? '— Connecté' : '— Non connecté'}</h4><p className="text-[0.82rem] text-[var(--text-secondary)]">Site : {form.site} | URL : {form.url || 'Non configuré'}</p></div>
-        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[0.72rem] font-semibold uppercase ${data.config?.actif ? 'bg-[var(--accent-green-dim)] text-[var(--accent-green)]' : 'bg-[var(--accent-orange-dim)] text-[var(--accent-orange)]'}`}>{data.config?.actif ? 'Actif' : 'Inactif'}</span>
+      {/* Status card */}
+      <div className="erp-status-card">
+        <div className="erp-status-icon" style={{ background: data.config?.actif ? 'var(--accent-green-dim)' : 'var(--accent-orange-dim)', color: data.config?.actif ? 'var(--accent-green)' : 'var(--accent-orange)' }}>🔗</div>
+        <div className="erp-status-body">
+          <h4>Sage X3{data.config?.actif ? ' — Connecté' : ' — Non connecté'}</h4>
+          <p>Site : {form.site || 'DLA'} | URL : {form.url || 'Non configuré'}</p>
+        </div>
+        <span className={`status-badge ${data.config?.actif ? 'active' : 'paused'}`}>{data.config?.actif ? 'Actif' : 'Inactif'}</span>
       </div>
 
-      <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg p-5 mb-5">
-        <div className="font-mono font-bold text-base mb-3.5">⚙️ Configuration de connexion</div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-[600px]">
-          {[{ k: 'url', l: 'URL du serveur', ph: 'https://x3.multiprint.cm/api' }, { k: 'site', l: 'Site' }, { k: 'database', l: 'Base de données', ph: 'MULTIPRINT_PROD' }, { k: 'user', l: 'Utilisateur API', ph: 'api_printseq' }].map((f) => (
-            <div key={f.k}><label className="block text-[0.8rem] font-semibold text-[var(--text-secondary)] mb-1 uppercase">{f.l}</label>
-              <input type="text" value={(form as any)[f.k]} onChange={(e) => setForm({ ...form, [f.k]: e.target.value })} placeholder={f.ph}
-                className="w-full px-3.5 py-3 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[var(--text-primary)]" /></div>
+      {/* Config */}
+      <div className="section-block">
+        <div className="section-block-title">⚙️ Configuration de connexion</div>
+        <div className="form-row" style={{ maxWidth: '600px' }}>
+          <div className="form-group"><label>URL du serveur</label><input type="text" className="form-input" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://x3.multiprint.cm/api" /></div>
+          <div className="form-group"><label>Site</label><input type="text" className="form-input" value={form.site} onChange={(e) => setForm({ ...form, site: e.target.value })} /></div>
+        </div>
+        <div className="form-row" style={{ maxWidth: '600px' }}>
+          <div className="form-group"><label>Base de données</label><input type="text" className="form-input" value={form.database} onChange={(e) => setForm({ ...form, database: e.target.value })} placeholder="MULTIPRINT_PROD" /></div>
+          <div className="form-group"><label>Utilisateur API</label><input type="text" className="form-input" value={form.user} onChange={(e) => setForm({ ...form, user: e.target.value })} placeholder="api_printseq" /></div>
+        </div>
+        <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={isPending}>💾 Enregistrer</button>
+          <button className="btn btn-secondary" onClick={() => toast.warning('Connexion non disponible — sera activée au déploiement backend')}>🔌 Tester la connexion</button>
+        </div>
+      </div>
+
+      {/* Mapping */}
+      <div className="section-block">
+        <div className="section-block-title">🗺️ Mapping des champs ERP ↔ PrintSeq</div>
+        <table className="data-table" style={{ fontSize: '0.82rem' }}><thead><tr>
+          <th>Champ Sage X3</th><th>Champ PrintSeq</th><th>Direction</th><th>Statut</th>
+        </tr></thead><tbody>
+          {MAPPING.map((m) => (
+            <tr key={m.x3}>
+              <td style={{ fontFamily: 'var(--font-mono)' }}>{m.x3}</td>
+              <td>{m.ps}</td>
+              <td>{m.dir}</td>
+              <td><span className={`status-badge ${m.ready ? 'active' : 'paused'}`}>{m.ready ? 'Prêt' : 'Optionnel'}</span></td>
+            </tr>
           ))}
-        </div>
-        <div className="flex gap-2.5 mt-4">
-          <button onClick={handleSave} disabled={isPending} className="px-5 py-2.5 rounded-md font-semibold text-white btn-gradient-blue">💾 Enregistrer</button>
-          <button onClick={() => toast.warning('Connexion non disponible — sera activée au déploiement backend')} className="px-5 py-2.5 rounded-md bg-[var(--bg-tertiary)] border border-[var(--border-primary)]">🔌 Tester</button>
-        </div>
+        </tbody></table>
       </div>
 
-      <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg p-5">
-        <div className="font-mono font-bold text-base mb-3.5 flex items-center justify-between">
-          <span>📤 File de synchronisation <span className="text-[0.7rem] px-2 py-0.5 bg-[var(--bg-tertiary)] rounded-full text-[var(--text-tertiary)]">{data.syncQueue?.length || 0}</span></span>
-          <button onClick={handleImport} disabled={isPending} className="px-3 py-1.5 rounded-md text-[0.8rem] bg-[var(--bg-tertiary)] border border-[var(--border-primary)]">📥 Simuler import OF</button>
+      {/* Sync queue */}
+      <div className="section-block">
+        <div className="section-block-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>📤 File de synchronisation <span className="record-count">({data.syncQueue?.length || 0} éléments)</span></span>
+          <button className="btn btn-sm btn-secondary" onClick={handleImport} disabled={isPending}>📥 Simuler import OF</button>
         </div>
-        {data.syncQueue?.length === 0 ? <div className="text-center py-5 text-[var(--text-tertiary)]">Aucun élément</div> :
+        {(pendingSync.length > 0 || errorSync.length > 0) && (
+          <div className="kpi-row" style={{ marginBottom: '14px' }}>
+            <div className="kpi-card"><div className="kpi-card-label">En attente</div><div className="kpi-card-value" style={{ color: 'var(--accent-orange)' }}>{pendingSync.length}</div></div>
+            <div className="kpi-card"><div className="kpi-card-label">En erreur</div><div className="kpi-card-value" style={{ color: 'var(--accent-red)' }}>{errorSync.length}</div></div>
+            <div className="kpi-card"><div className="kpi-card-label">Total traités</div><div className="kpi-card-value">{data.syncQueue?.length || 0}</div></div>
+          </div>
+        )}
+        {data.syncQueue?.length === 0 ? (
+          <div className="empty-state" style={{ padding: '20px' }}><div className="empty-state-text">Aucun élément dans la file de synchronisation</div></div>
+        ) : (
           data.syncQueue?.map((sq: any) => (
-            <div key={sq.id} className="flex items-center gap-2.5 px-3.5 py-2.5 border border-[var(--border-primary)] rounded-md mb-1 text-[0.82rem]">
-              <span className="px-2 py-0.5 bg-[var(--accent-blue-dim)] text-[var(--accent-blue)] rounded text-[0.68rem] font-semibold uppercase">{sq.action}</span>
-              <div className="flex-1"><div className="font-semibold">{sq.typeEntite} #{sq.entiteId || '—'}</div>
-                <div className="text-[0.72rem] text-[var(--text-tertiary)]">{new Date(sq.createdAt).toLocaleString('fr-FR')}</div></div>
-              <span className={`inline-flex px-2 py-0.5 rounded-full text-[0.72rem] font-semibold uppercase ${sq.statut === 'done' ? 'bg-[var(--accent-green-dim)] text-[var(--accent-green)]' : sq.statut === 'error' ? 'bg-[var(--accent-red-dim)] text-[var(--accent-red)]' : 'bg-[var(--accent-orange-dim)] text-[var(--accent-orange)]'}`}>{sq.statut}</span>
+            <div key={sq.id} className="sync-queue-item">
+              <span className="sq-type">{sq.action || sq.typeEntite}</span>
+              <div className="sq-body">
+                <div style={{ fontWeight: 600 }}>{sq.typeEntite} #{sq.entiteId || '—'}</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>{new Date(sq.createdAt).toLocaleString('fr-FR')}{sq.messageErreur ? ` — ${sq.messageErreur}` : ''}</div>
+              </div>
+              <span className={`status-badge ${sq.statut === 'done' ? 'active' : sq.statut === 'error' ? 'stopped' : 'paused'}`}>{sq.statut}</span>
             </div>
           ))
-        }
+        )}
+      </div>
+
+      {/* Future features */}
+      <div className="section-block">
+        <div className="section-block-title">🚀 Fonctionnalités prévues</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '0.85rem' }}>
+          {FUTURE_FEATURES.map((f) => (
+            <div key={f} style={{ padding: '10px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)' }}>{f}</div>
+          ))}
+        </div>
       </div>
     </div>
   );

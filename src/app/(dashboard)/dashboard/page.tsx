@@ -4,6 +4,48 @@ import { useState, useEffect } from 'react';
 import { getDashboardData } from '@/lib/actions';
 import { formatNumber, formatDuration } from '@/lib/utils';
 
+/* Donut SVG matching static v9.1 _donutSVG */
+function DonutSVG({ segments, size = 120, centerLabel }: { segments: { value: number; color: string }[]; size?: number; centerLabel?: string }) {
+  const r = 36, cx = 50, cy = 50, circumference = 2 * Math.PI * r;
+  let total = segments.reduce((s, seg) => s + seg.value, 0);
+  if (total === 0) total = 1;
+  let offset = 0;
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" className="donut-svg">
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--bg-tertiary)" strokeWidth="12" />
+      {segments.map((seg, i) => {
+        const pct = seg.value / total;
+        const dashLen = pct * circumference;
+        const dashGap = circumference - dashLen;
+        const o = offset;
+        offset += dashLen;
+        return <circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={seg.color} strokeWidth="12" strokeDasharray={`${dashLen.toFixed(2)} ${dashGap.toFixed(2)}`} strokeDashoffset={(-o).toFixed(2)} transform="rotate(-90 50 50)" />;
+      })}
+      <text x="50" y="49" textAnchor="middle" fill="var(--text-primary)" fontFamily="var(--font-mono)" fontSize="14" fontWeight="700">{total}</text>
+      {centerLabel && <text x="50" y="61" textAnchor="middle" fill="var(--text-tertiary)" fontFamily="var(--font-body)" fontSize="6" fontWeight="400">{centerLabel}</text>}
+    </svg>
+  );
+}
+
+/* Bar chart matching static v9.1 _barChart */
+function BarChart({ items, maxVal }: { items: { label: string; value: number; display: string; color: string }[]; maxVal: number }) {
+  const mx = maxVal > 0 ? maxVal : 1;
+  return (
+    <div className="bar-chart">
+      {items.map((it, i) => {
+        const pct = Math.max(2, (it.value / mx) * 100);
+        return (
+          <div key={i} className="bar-col">
+            <div className="bar-val">{it.display}</div>
+            <div className="bar-fill" style={{ height: `${pct}%`, background: it.color }} />
+            <div className="bar-label" title={it.label}>{it.label}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [filters, setFilters] = useState({ poleId: '', dateFrom: '', dateTo: '' });
   const [data, setData] = useState<any>(null);
@@ -11,149 +53,289 @@ export default function DashboardPage() {
 
   useEffect(() => { getDashboardData(filters).then(setData); }, [filters]);
 
-  if (!data) return <div className="text-center py-12 text-[var(--text-tertiary)]">Chargement du dashboard...</div>;
+  if (!data) return <div className="empty-state" style={{ marginTop: 80 }}><div className="empty-state-text">Chargement du dashboard...</div></div>;
 
   const tabs = [
     { id: 'global', label: 'Vue globale' },
     { id: 'poles', label: 'Comparatif pôles' },
-    { id: 'arrets', label: 'Analyse arrêts' },
+    { id: 'machines', label: 'Par machine' },
+    { id: 'conducteurs', label: 'Par conducteur' },
+    { id: 'arrets_analysis', label: 'Analyse arrêts' },
   ];
 
   return (
     <div>
-      <h1 className="font-mono text-[1.5rem] font-bold mb-1">📊 Dashboard KPI multi-pôles</h1>
-      <p className="text-[var(--text-secondary)] text-[0.9rem] mb-6">Performance consolidée de la production MULTIPRINT</p>
+      <div className="page-title">📊 Dashboard KPI multi-pôles</div>
+      <div className="page-subtitle">Performance consolidée de la production MULTIPRINT</div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-2.5 p-4 bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-md mb-5 items-end">
-        <div className="min-w-[130px]"><label className="block text-[0.68rem] font-semibold text-[var(--text-secondary)] mb-1 uppercase">Pôle</label>
-          <select value={filters.poleId} onChange={(e) => setFilters({ ...filters, poleId: e.target.value })}
-            className="w-full px-2 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.8rem]">
-            <option value="">Tous</option>
+      <div className="dash-filters">
+        <div className="form-group"><label>Pôle</label>
+          <select value={filters.poleId} onChange={(e) => setFilters({ ...filters, poleId: e.target.value })} className="form-input">
+            <option value="">Tous les pôles</option>
             {data.poles?.map((p: any) => <option key={p.id} value={p.id}>{p.icone} {p.nom}</option>)}
           </select></div>
-        <div><label className="block text-[0.68rem] font-semibold text-[var(--text-secondary)] mb-1 uppercase">Du</label>
-          <input type="date" value={filters.dateFrom} onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })} className="px-2 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.8rem]" /></div>
-        <div><label className="block text-[0.68rem] font-semibold text-[var(--text-secondary)] mb-1 uppercase">Au</label>
-          <input type="date" value={filters.dateTo} onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })} className="px-2 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.8rem]" /></div>
-        <button onClick={() => setFilters({ poleId: '', dateFrom: '', dateTo: '' })} className="px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded-md text-[0.8rem]">Reset</button>
+        <div className="form-group"><label>Du</label>
+          <input type="date" value={filters.dateFrom} onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })} className="form-input" /></div>
+        <div className="form-group"><label>Au</label>
+          <input type="date" value={filters.dateTo} onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })} className="form-input" /></div>
+        <button onClick={() => setFilters({ poleId: '', dateFrom: '', dateTo: '' })} className="btn btn-sm btn-secondary">Reset</button>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-5 border-b border-[var(--border-primary)]">
+      <div className="tabs dash-tabs">
         {tabs.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-4 py-2.5 text-[0.85rem] font-medium border-b-2 -mb-px transition-all ${tab === t.id ? 'border-[var(--accent-blue)] text-[var(--accent-blue)] font-semibold' : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}>
+          <button key={t.id} onClick={() => setTab(t.id)} className={`tab-btn${tab === t.id ? ' active' : ''}`}>
             {t.label}
           </button>
         ))}
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-6">
-        {[
-          { l: 'Dossiers', v: data.nbTotal, c: 'var(--accent-blue)', s: `${data.nbEnCours} en cours` },
-          { l: 'Qté bonne', v: formatNumber(data.totBonnes), c: 'var(--accent-green)' },
-          { l: 'Gâche', v: formatNumber(data.totGache), c: 'var(--accent-red)', s: `${data.txGache.toFixed(1)}%` },
-          { l: 'Arrêts', v: data.nbArrets, c: 'var(--accent-orange)', s: formatDuration(data.totStopMs) },
-          { l: 'Disponibilité', v: `${data.txDispo.toFixed(1)}%`, c: 'var(--accent-cyan)', s: `MTTR: ${formatDuration(data.mttr)}` },
-          { l: 'Conformité', v: `${data.txConf.toFixed(1)}%`, c: 'var(--accent-purple)' },
-          { l: 'Contrôles', v: data.nbCtrlBon + data.nbCtrlMauv, s: `${data.nbCtrlBon}✓ ${data.nbCtrlMauv}✗` },
-          { l: 'Passations', v: data.nbPassations },
-        ].map((k) => (
-          <div key={k.l} className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-md p-3.5" style={k.c ? { borderBottom: `3px solid ${k.c}` } : undefined}>
-            <div className="text-[0.68rem] text-[var(--text-tertiary)] uppercase tracking-wider mb-1">{k.l}</div>
-            <div className="font-mono text-[1.5rem] font-bold leading-tight" style={{ color: k.c }}>{k.v}</div>
-            {k.s && <div className="text-[0.72rem] text-[var(--text-tertiary)] mt-0.5">{k.s}</div>}
-          </div>
-        ))}
-      </div>
+      {/* === GLOBAL VIEW === */}
+      {tab === 'global' && (<>
+        <div className="dash-kpi-grid">
+          <div className="dash-kpi" style={{ borderBottom: '3px solid var(--accent-blue)' }}><div className="dash-kpi-label">Dossiers</div><div className="dash-kpi-value">{data.nbTotal}</div><div className="dash-kpi-sub">{data.nbEnCours} en cours · {data.nbAttente} attente · {data.nbCloture} clôturés</div></div>
+          <div className="dash-kpi" style={{ borderBottom: '3px solid var(--accent-green)' }}><div className="dash-kpi-label">Qté bonne</div><div className="dash-kpi-value" style={{ color: 'var(--accent-green)' }}>{formatNumber(data.totBonnes)}</div><div className="dash-kpi-sub">/ {formatNumber(data.qteCmd || 0)} commandés</div></div>
+          <div className="dash-kpi" style={{ borderBottom: '3px solid var(--accent-red)' }}><div className="dash-kpi-label">Gâche</div><div className="dash-kpi-value" style={{ color: 'var(--accent-red)' }}>{formatNumber(data.totGache)}</div><div className="dash-kpi-sub">{data.txGache.toFixed(1)}% taux de gâche</div></div>
+          <div className="dash-kpi" style={{ borderBottom: '3px solid var(--accent-orange)' }}><div className="dash-kpi-label">Arrêts</div><div className="dash-kpi-value" style={{ color: 'var(--accent-orange)' }}>{data.nbArrets}</div><div className="dash-kpi-sub">{formatDuration(data.totStopMs)} total</div></div>
+          <div className="dash-kpi" style={{ borderBottom: '3px solid var(--accent-cyan)' }}><div className="dash-kpi-label">Disponibilité</div><div className="dash-kpi-value" style={{ color: 'var(--accent-cyan)' }}>{data.txDispo.toFixed(1)}%</div><div className="dash-kpi-sub">MTTR : {formatDuration(data.mttr)}</div></div>
+          <div className="dash-kpi" style={{ borderBottom: '3px solid var(--accent-purple)' }}><div className="dash-kpi-label">Conformité tâches</div><div className="dash-kpi-value" style={{ color: 'var(--accent-purple)' }}>{data.txConf.toFixed(1)}%</div><div className="dash-kpi-sub">{data.nbTacheConf || 0} conf / {data.nbTacheNC || 0} NC</div></div>
+          <div className="dash-kpi"><div className="dash-kpi-label">Contrôles</div><div className="dash-kpi-value">{data.nbCtrlBon + data.nbCtrlMauv}</div><div className="dash-kpi-sub">{data.nbCtrlBon} bons / {data.nbCtrlMauv} mauvais</div></div>
+          <div className="dash-kpi"><div className="dash-kpi-label">Passations</div><div className="dash-kpi-value">{data.nbPassations}</div><div className="dash-kpi-sub">transferts d&apos;équipe</div></div>
+        </div>
 
-      {/* Content */}
-      {tab === 'global' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg p-5">
-            <div className="font-mono font-bold text-base mb-3.5">📊 Production par pôle</div>
-            {data.perPole.map((p: any) => {
-              const maxE = Math.max(...data.perPole.map((pp: any) => pp.engage), 1);
+        <div className="grid-2">
+          {/* Bar chart — Production par pôle */}
+          <div className="section-block">
+            <div className="section-block-title">📊 Production par pôle</div>
+            {data.perPole && data.perPole.length > 0 && (() => {
+              const maxProd = Math.max(...data.perPole.map((p: any) => p.engage), 1);
+              const barItems = data.perPole.map((p: any) => ({
+                label: p.pole.nom.replace('Héliogravure ', 'Hélio ').replace('Bouchon ', 'B.'),
+                value: p.engage, display: formatNumber(p.engage), color: p.pole.couleur
+              }));
+              return <BarChart items={barItems} maxVal={maxProd} />;
+            })()}
+          </div>
+
+          {/* Donut — Répartition des dossiers */}
+          <div className="section-block">
+            <div className="section-block-title">📋 Répartition des dossiers</div>
+            <div className="donut-container">
+              <DonutSVG segments={[
+                { value: data.nbEnCours, color: 'var(--accent-green)' },
+                { value: data.nbAttente, color: 'var(--accent-orange)' },
+                { value: data.nbCloture, color: 'var(--accent-blue)' },
+              ]} size={120} centerLabel="dossiers" />
+              <div className="donut-legend">
+                <div className="donut-legend-item"><div className="donut-legend-color" style={{ background: 'var(--accent-green)' }} />En cours ({data.nbEnCours})</div>
+                <div className="donut-legend-item"><div className="donut-legend-color" style={{ background: 'var(--accent-orange)' }} />En attente ({data.nbAttente})</div>
+                <div className="donut-legend-item"><div className="donut-legend-color" style={{ background: 'var(--accent-blue)' }} />Clôturés ({data.nbCloture})</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Pareto arrêts */}
+        {data.pareto && data.pareto.length > 0 && (
+          <div className="section-block">
+            <div className="section-block-title">📉 Pareto des causes d&apos;arrêt</div>
+            {data.pareto.slice(0, 8).map((p: any) => {
+              const maxC = data.pareto[0]?.count || 1;
+              const pctW = (p.count / maxC) * 100;
               return (
-                <div key={p.pole.id} className="mb-2">
-                  <div className="flex justify-between text-[0.82rem] mb-0.5"><span>{p.pole.icone} {p.pole.nom}</span><span className="font-mono">{formatNumber(p.engage)}</span></div>
-                  <div className="h-5 bg-[var(--bg-tertiary)] rounded overflow-hidden"><div className="h-full rounded" style={{ width: `${(p.engage / maxE) * 100}%`, background: p.pole.couleur }} /></div>
+                <div key={p.id} className="pareto-row">
+                  <span className="pareto-label">{p.label}</span>
+                  <div className="pareto-bar-bg"><div className="pareto-bar-fill" style={{ width: `${pctW}%`, background: 'var(--accent-red)' }}>{p.count}</div></div>
+                  <span className="pareto-count">{p.count}</span>
                 </div>
               );
             })}
           </div>
-          <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg p-5">
-            <div className="font-mono font-bold text-base mb-3.5">📉 Top causes d&apos;arrêt</div>
-            {data.pareto.length === 0 ? <div className="text-center py-5 text-[var(--text-tertiary)]">Aucun arrêt</div> :
-              data.pareto.slice(0, 6).map((p: any) => {
-                const maxC = data.pareto[0]?.count || 1;
-                return (
-                  <div key={p.id} className="flex items-center gap-2.5 mb-1.5 text-[0.82rem]">
-                    <span className="w-[160px] truncate flex-shrink-0">{p.label}</span>
-                    <div className="flex-1 h-5 bg-[var(--bg-tertiary)] rounded overflow-hidden"><div className="h-full rounded flex items-center pl-2 text-white text-[0.7rem] font-semibold" style={{ width: `${(p.count / maxC) * 100}%`, background: 'var(--accent-red)' }}>{p.count}</div></div>
-                    <span className="font-mono font-semibold w-[40px] text-right">{p.count}</span>
-                  </div>
-                );
-              })}
-          </div>
-        </div>
-      )}
+        )}
+      </>)}
 
-      {tab === 'poles' && (
-        <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg p-5">
-          <div className="font-mono font-bold text-base mb-3.5">🏭 Comparatif multi-pôles</div>
-          <div className="overflow-x-auto"><table className="w-full border-collapse"><thead><tr>
-            {['Pôle','Dossiers','Engagé','Bonnes','Gâche','Tx Gâche','Arrêts','Dispo.','Conformité'].map((h) => <th key={h} className="text-left px-3 py-2 text-[0.68rem] font-bold uppercase text-[var(--text-tertiary)] border-b border-[var(--border-primary)]">{h}</th>)}
+      {/* === COMPARATIF PÔLES === */}
+      {tab === 'poles' && (<>
+        <div className="section-block">
+          <div className="section-block-title">🏭 Comparatif multi-pôles</div>
+          <div style={{ overflowX: 'auto' }}><table className="data-table comp-table"><thead><tr>
+            <th>Pôle</th><th>Dossiers</th><th>Engagé</th><th>Bonnes</th><th>Gâche</th><th>Tx Gâche</th><th>Arrêts</th><th>Tps arrêt</th><th>Dispo.</th><th>Conformité</th>
           </tr></thead><tbody>
             {data.perPole.map((p: any) => (
-              <tr key={p.pole.id} className="hover:bg-[var(--bg-tertiary)]">
-                <td className="px-3 py-2 text-[0.85rem] border-b border-[var(--border-primary)] font-semibold">{p.pole.icone} {p.pole.nom}</td>
-                <td className="px-3 py-2 border-b border-[var(--border-primary)] font-mono font-bold">{p.dossiers}</td>
-                <td className="px-3 py-2 border-b border-[var(--border-primary)] font-mono">{formatNumber(p.engage)}</td>
-                <td className="px-3 py-2 border-b border-[var(--border-primary)] font-mono text-[var(--accent-green)]">{formatNumber(p.bonnes)}</td>
-                <td className="px-3 py-2 border-b border-[var(--border-primary)] font-mono text-[var(--accent-red)]">{formatNumber(p.gache)}</td>
-                <td className="px-3 py-2 border-b border-[var(--border-primary)] font-mono font-bold">{p.txGache.toFixed(1)}%</td>
-                <td className="px-3 py-2 border-b border-[var(--border-primary)] font-mono">{p.arrets}</td>
-                <td className="px-3 py-2 border-b border-[var(--border-primary)] font-mono" style={{ color: p.txDispo >= 85 ? 'var(--accent-green)' : 'var(--accent-orange)' }}>{p.txDispo.toFixed(1)}%</td>
-                <td className="px-3 py-2 border-b border-[var(--border-primary)] font-mono">{p.txConf.toFixed(1)}%</td>
+              <tr key={p.pole.id}>
+                <td style={{ fontWeight: 600 }}>{p.pole.icone} {p.pole.nom}</td>
+                <td className="highlight">{p.dossiers}</td>
+                <td>{formatNumber(p.engage)}</td>
+                <td style={{ color: 'var(--accent-green)' }}>{formatNumber(p.bonnes)}</td>
+                <td style={{ color: 'var(--accent-red)' }}>{formatNumber(p.gache)}</td>
+                <td className="highlight">{p.txGache.toFixed(1)}%</td>
+                <td>{p.arrets}</td>
+                <td>{formatDuration(p.stopMs || 0)}</td>
+                <td style={{ color: p.txDispo >= 85 ? 'var(--accent-green)' : p.txDispo >= 70 ? 'var(--accent-orange)' : 'var(--accent-red)' }}>{p.txDispo.toFixed(1)}%</td>
+                <td>{p.txConf.toFixed(1)}%</td>
               </tr>
             ))}
           </tbody></table></div>
         </div>
-      )}
 
-      {tab === 'arrets' && (
-        <div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-            {[
-              { l: 'Total arrêts', v: data.nbArrets, c: 'var(--accent-red)' },
-              { l: 'Temps total', v: formatDuration(data.totStopMs), c: 'var(--accent-orange)' },
-              { l: 'MTTR', v: formatDuration(data.mttr), c: 'var(--accent-cyan)' },
-              { l: 'Disponibilité', v: `${data.txDispo.toFixed(1)}%`, c: 'var(--accent-green)' },
-            ].map((k) => (
-              <div key={k.l} className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-md p-3.5" style={{ borderBottom: `3px solid ${k.c}` }}>
-                <div className="text-[0.68rem] text-[var(--text-tertiary)] uppercase mb-1">{k.l}</div>
-                <div className="font-mono text-[1.5rem] font-bold" style={{ color: k.c }}>{k.v}</div>
-              </div>
-            ))}
+        {/* Bar charts comparison */}
+        <div className="grid-2">
+          <div className="section-block">
+            <div className="section-block-title">Production engagée</div>
+            {(() => {
+              const maxEng = Math.max(...data.perPole.map((p: any) => p.engage), 1);
+              const items = data.perPole.map((p: any) => ({ label: p.pole.nom.split(' ')[0], value: p.engage, display: formatNumber(p.engage), color: p.pole.couleur }));
+              return <BarChart items={items} maxVal={maxEng} />;
+            })()}
           </div>
-          <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg p-5">
-            <div className="font-mono font-bold text-base mb-3.5">📉 Pareto des causes d&apos;arrêt</div>
-            {data.pareto.map((p: any, i: number) => {
-              const maxC = data.pareto[0]?.count || 1;
-              return (
-                <div key={p.id} className="flex items-center gap-2.5 mb-1.5 text-[0.82rem]">
-                  <span className="w-[160px] truncate flex-shrink-0">{p.label}</span>
-                  <div className="flex-1 h-5 bg-[var(--bg-tertiary)] rounded overflow-hidden"><div className="h-full rounded flex items-center pl-2 text-white text-[0.7rem] font-semibold" style={{ width: `${(p.count / maxC) * 100}%`, background: 'var(--accent-red)' }}>{p.count}</div></div>
-                  <span className="font-mono font-semibold w-[40px] text-right">{p.count}</span>
-                </div>
-              );
-            })}
+          <div className="section-block">
+            <div className="section-block-title">Taux de disponibilité (%)</div>
+            {(() => {
+              const items = data.perPole.map((p: any) => ({
+                label: p.pole.nom.split(' ')[0], value: p.txDispo, display: `${p.txDispo.toFixed(0)}%`,
+                color: p.txDispo >= 85 ? 'var(--accent-green)' : p.txDispo >= 70 ? 'var(--accent-orange)' : 'var(--accent-red)'
+              }));
+              return <BarChart items={items} maxVal={100} />;
+            })()}
           </div>
         </div>
-      )}
+      </>)}
+
+      {/* === PAR MACHINE === */}
+      {tab === 'machines' && (<>
+        <div className="section-block">
+          <div className="section-block-title">🖨️ Performance par machine</div>
+          {(!data.perMachine || data.perMachine.length === 0) ? (
+            <div className="empty-state" style={{ padding: 20 }}><div className="empty-state-text">Aucune donnée machine</div></div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}><table className="data-table comp-table"><thead><tr>
+              <th>Machine</th><th>Pôle</th><th>Dossiers</th><th>Engagé</th><th>Gâche</th><th>Tx Gâche</th><th>Arrêts</th><th>Tps arrêt</th><th>Dispo.</th>
+            </tr></thead><tbody>
+              {data.perMachine.map((m: any) => (
+                <tr key={m.machine.id}>
+                  <td style={{ fontWeight: 600 }}>{m.machine.codeMachine} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>{m.machine.nom}</span></td>
+                  <td>{m.pole?.icone} {m.pole?.nom || '—'}</td>
+                  <td className="highlight">{m.dossiers}</td>
+                  <td>{formatNumber(m.engage)}</td>
+                  <td style={{ color: 'var(--accent-red)' }}>{formatNumber(m.gache)}</td>
+                  <td>{m.txGache.toFixed(1)}%</td>
+                  <td>{m.arrets}</td>
+                  <td>{formatDuration(m.stopMs || 0)}</td>
+                  <td style={{ color: m.txDispo >= 85 ? 'var(--accent-green)' : 'var(--accent-orange)' }}>{m.txDispo.toFixed(1)}%</td>
+                </tr>
+              ))}
+            </tbody></table></div>
+          )}
+        </div>
+
+        {/* Top machines bar chart */}
+        {data.perMachine && data.perMachine.length > 0 && (
+          <div className="section-block">
+            <div className="section-block-title">Charge par machine (engagé)</div>
+            {(() => {
+              const sorted = [...data.perMachine].sort((a: any, b: any) => b.engage - a.engage);
+              const maxM = sorted[0]?.engage || 1;
+              const mItems = sorted.slice(0, 8).map((m: any) => ({
+                label: m.machine.codeMachine, value: m.engage, display: formatNumber(m.engage),
+                color: m.pole?.couleur || 'var(--accent-blue)'
+              }));
+              return <BarChart items={mItems} maxVal={maxM} />;
+            })()}
+          </div>
+        )}
+      </>)}
+
+      {/* === PAR CONDUCTEUR === */}
+      {tab === 'conducteurs' && (<>
+        <div className="section-block">
+          <div className="section-block-title">👷 Performance par conducteur</div>
+          {(!data.perOp || data.perOp.length === 0) ? (
+            <div className="empty-state" style={{ padding: 20 }}><div className="empty-state-text">Aucune donnée opérateur</div></div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}><table className="data-table comp-table"><thead><tr>
+              <th>Conducteur</th><th>Matricule</th><th>Dossiers</th><th>Bonnes</th><th>Gâche</th><th>Tx Gâche</th><th>Arrêts</th>
+            </tr></thead><tbody>
+              {data.perOp.map((o: any) => (
+                <tr key={o.op.id}>
+                  <td style={{ fontWeight: 600 }}>{o.op.nom}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem' }}>{o.op.matricule || '—'}</td>
+                  <td className="highlight">{o.dossiers}</td>
+                  <td style={{ color: 'var(--accent-green)' }}>{formatNumber(o.bonnes)}</td>
+                  <td style={{ color: 'var(--accent-red)' }}>{formatNumber(o.gache)}</td>
+                  <td>{o.txGache.toFixed(1)}%</td>
+                  <td>{o.arrets}</td>
+                </tr>
+              ))}
+            </tbody></table></div>
+          )}
+        </div>
+
+        {/* Conducteur bar chart */}
+        {data.perOp && data.perOp.length > 0 && (
+          <div className="section-block">
+            <div className="section-block-title">Production déclarée par conducteur</div>
+            {(() => {
+              const sorted = [...data.perOp].sort((a: any, b: any) => b.bonnes - a.bonnes);
+              const maxO = Math.max(...sorted.map((o: any) => o.bonnes), 1);
+              const oItems = sorted.slice(0, 10).map((o: any) => ({
+                label: o.op.nom.split(' ').pop() || o.op.nom, value: o.bonnes, display: formatNumber(o.bonnes), color: 'var(--accent-blue)'
+              }));
+              return <BarChart items={oItems} maxVal={maxO} />;
+            })()}
+          </div>
+        )}
+      </>)}
+
+      {/* === ANALYSE ARRÊTS === */}
+      {tab === 'arrets_analysis' && (<>
+        <div className="dash-kpi-grid">
+          <div className="dash-kpi" style={{ borderBottom: '3px solid var(--accent-red)' }}><div className="dash-kpi-label">Total arrêts</div><div className="dash-kpi-value" style={{ color: 'var(--accent-red)' }}>{data.nbArrets}</div></div>
+          <div className="dash-kpi" style={{ borderBottom: '3px solid var(--accent-orange)' }}><div className="dash-kpi-label">Temps total</div><div className="dash-kpi-value" style={{ color: 'var(--accent-orange)' }}>{formatDuration(data.totStopMs)}</div></div>
+          <div className="dash-kpi" style={{ borderBottom: '3px solid var(--accent-cyan)' }}><div className="dash-kpi-label">MTTR</div><div className="dash-kpi-value">{formatDuration(data.mttr)}</div><div className="dash-kpi-sub">temps moyen de réparation</div></div>
+          <div className="dash-kpi" style={{ borderBottom: '3px solid var(--accent-green)' }}><div className="dash-kpi-label">Disponibilité</div><div className="dash-kpi-value" style={{ color: 'var(--accent-green)' }}>{data.txDispo.toFixed(1)}%</div></div>
+        </div>
+
+        {/* Pareto full */}
+        <div className="section-block">
+          <div className="section-block-title">📉 Pareto des causes d&apos;arrêt</div>
+          {(!data.pareto || data.pareto.length === 0) ? (
+            <div className="empty-state" style={{ padding: 20 }}><div className="empty-state-text">Aucun arrêt enregistré</div></div>
+          ) : (() => {
+            const totalCauses = data.pareto.reduce((s: number, p: any) => s + p.count, 0);
+            let cumul = 0;
+            return data.pareto.map((p: any) => {
+              const maxC = data.pareto[0].count;
+              cumul += p.count;
+              const pctW = (p.count / maxC) * 100;
+              const pctCumul = totalCauses > 0 ? ((cumul / totalCauses) * 100).toFixed(0) : '0';
+              return (
+                <div key={p.id} className="pareto-row">
+                  <span className="pareto-label">{p.label}</span>
+                  <div className="pareto-bar-bg"><div className="pareto-bar-fill" style={{ width: `${pctW}%`, background: 'var(--accent-red)' }}>{p.count}</div></div>
+                  <span className="pareto-count">{pctCumul}%</span>
+                </div>
+              );
+            });
+          })()}
+        </div>
+
+        {/* Arrêts par pôle bar chart */}
+        {data.perPole && data.perPole.length > 0 && (
+          <div className="section-block">
+            <div className="section-block-title">Arrêts par pôle</div>
+            {(() => {
+              const maxStops = Math.max(...data.perPole.map((p: any) => p.arrets), 1);
+              const sItems = data.perPole.map((p: any) => ({
+                label: p.pole.nom.split(' ')[0], value: p.arrets,
+                display: `${p.arrets} (${formatDuration(p.stopMs || 0)})`,
+                color: 'var(--accent-red)'
+              }));
+              return <BarChart items={sItems} maxVal={maxStops} />;
+            })()}
+          </div>
+        )}
+      </>)}
     </div>
   );
 }

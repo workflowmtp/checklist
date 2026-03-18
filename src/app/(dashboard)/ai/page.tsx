@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
-import { getDashboardData } from '@/lib/actions';
-import { formatNumber, formatDuration, getInitials } from '@/lib/utils';
+import { getDashboardData, getHomeData } from '@/lib/actions';
+import { formatNumber, formatDuration, getInitials, getStatutDossierLabel } from '@/lib/utils';
 
 interface Message { role: 'user' | 'assistant'; content: string; time: string; }
 
@@ -40,6 +40,15 @@ export default function AIPage() {
     const data = await getDashboardData();
     const q = question.toLowerCase();
 
+    if (q.includes('dossier') && (q.includes('actif') || q.includes('en cours') || q.includes('cours'))) {
+      const homeData = await getHomeData();
+      if (homeData.activeDossiers.length === 0) return '📋 **Aucun dossier actif** actuellement.';
+      let resp = `📋 **${homeData.activeDossiers.length} dossier(s) actif(s)**\n\n`;
+      homeData.activeDossiers.forEach((d: any) => {
+        resp += `• **${d.dossierNumero}** — ${d.designation}\n  ${d.pole?.icone || ''} ${d.pole?.nom || ''} | Machine : ${d.machine?.codeMachine || '—'} | Statut : ${getStatutDossierLabel(d.statut)}\n`;
+      });
+      return resp;
+    }
     if (q.includes('état') || q.includes('situation') || q.includes('résumé') || q.includes('overview')) {
       return `📊 **Situation production MULTIPRINT**\n\n🏭 ${data.nbTotal} dossiers au total : ${data.nbEnCours} en cours, ${data.nbAttente} en attente, ${data.nbCloture} clôturés.\n\n📦 Production : ${formatNumber(data.totBonnes)} bonnes / ${formatNumber(data.totEngage)} engagées\n🗑 Gâche : ${formatNumber(data.totGache)} (${data.txGache.toFixed(1)}%)\n⏱ Disponibilité : ${data.txDispo.toFixed(1)}% | MTTR : ${formatDuration(data.mttr)}\n✅ Conformité tâches : ${data.txConf.toFixed(1)}%`;
     }

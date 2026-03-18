@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition } from 'react';
 import { toast } from 'sonner';
-import { getAdminData, savePole, deletePole, saveAtelier, deleteAtelier, saveMachine, deleteMachine, saveOperateur, deleteOperateur, saveCause, saveCheckpoint, saveUser, savePermission, toggleRolePermission, deleteEntity } from '@/lib/actions';
+import { getAdminData, savePole, deletePole, saveAtelier, deleteAtelier, saveMachine, deleteMachine, saveOperateur, deleteOperateur, saveCause, saveCheckpoint, saveUser, savePermission, toggleRolePermission, deleteEntity, linkMachineAtelier, unlinkMachineAtelier, linkOperateurAtelier, unlinkOperateurAtelier, getAteliersForPole, getAdminStats, getAdminLogs, getExportData } from '@/lib/actions';
 import { getRoleLabel, getAllRoles } from '@/lib/permissions';
 import { Role } from '@prisma/client';
 
@@ -16,6 +16,7 @@ const TABS = [
   { id: 'users', icon: '👤', label: 'Utilisateurs' },
   { id: 'permissions', icon: '🔐', label: 'Permissions' },
   { id: 'role-permissions', icon: '🛡️', label: 'Rôles & Permissions' },
+  { id: 'params', icon: '🔧', label: 'Paramètres' },
 ];
 
 export default function AdminPage() {
@@ -27,6 +28,9 @@ export default function AdminPage() {
   const [allPermissions, setAllPermissions] = useState<any[]>([]);
   const [rolePermsMap, setRolePermsMap] = useState<Record<string, Set<string>>>({});
   const [poles, setPoles] = useState<any[]>([]);
+  const [linkModal, setLinkModal] = useState<any>(null);
+  const [linkAteliers, setLinkAteliers] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>(null);
 
   useEffect(() => { loadData(); }, [tab]);
   const loadData = async () => {
@@ -47,6 +51,36 @@ export default function AdminPage() {
       });
       setRolePermsMap(map);
     }
+    if (tab === 'params') {
+      const s = await getAdminStats();
+      setStats(s);
+    }
+  };
+
+  // Machine-Atelier / Operateur-Atelier linking
+  const openLinkModal = async (type: 'machine' | 'operateur', item: any) => {
+    const ateliers = await getAteliersForPole(item.poleId);
+    setLinkAteliers(ateliers);
+    setLinkModal({ type, item });
+  };
+  const handleLink = (atelierId: string) => {
+    if (!atelierId || !linkModal) return;
+    startTransition(async () => {
+      if (linkModal.type === 'machine') await linkMachineAtelier(linkModal.item.id, atelierId);
+      else await linkOperateurAtelier(linkModal.item.id, atelierId);
+      toast.success('Atelier lié');
+      loadData();
+      openLinkModal(linkModal.type, linkModal.item);
+    });
+  };
+  const handleUnlink = (atelierId: string) => {
+    startTransition(async () => {
+      if (linkModal.type === 'machine') await unlinkMachineAtelier(linkModal.item.id, atelierId);
+      else await unlinkOperateurAtelier(linkModal.item.id, atelierId);
+      toast.success('Lien supprimé');
+      loadData();
+      openLinkModal(linkModal.type, linkModal.item);
+    });
   };
 
   const filtered = data.filter((item: any) => {
@@ -103,7 +137,7 @@ export default function AdminPage() {
             ))}
           </div>
 
-          {tab !== 'role-permissions' && (
+          {tab !== 'role-permissions' && tab !== 'params' && (
           <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg p-5">
             <div className="font-mono font-bold text-base mb-3.5">{TABS.find((t) => t.id === tab)?.icon} {TABS.find((t) => t.id === tab)?.label} <span className="text-[0.7rem] px-2 py-0.5 bg-[var(--bg-tertiary)] rounded-full text-[var(--text-tertiary)]">{filtered.length}</span></div>
 
@@ -117,8 +151,8 @@ export default function AdminPage() {
               <table className="w-full border-collapse"><thead><tr>
                 {tab === 'poles' && ['Icône','Nom','Description','Couleur','Actions'].map((h) => <th key={h} className="text-left px-3 py-2 text-[0.7rem] font-bold uppercase text-[var(--text-tertiary)] border-b border-[var(--border-primary)]">{h}</th>)}
                 {tab === 'ateliers' && ['Nom','Pôle','Description','Actions'].map((h) => <th key={h} className="text-left px-3 py-2 text-[0.7rem] font-bold uppercase text-[var(--text-tertiary)] border-b border-[var(--border-primary)]">{h}</th>)}
-                {tab === 'machines' && ['Code','Nom','Pôle','Actif','Actions'].map((h) => <th key={h} className="text-left px-3 py-2 text-[0.7rem] font-bold uppercase text-[var(--text-tertiary)] border-b border-[var(--border-primary)]">{h}</th>)}
-                {tab === 'operateurs' && ['Nom','Matricule','Pôle','Actif','Actions'].map((h) => <th key={h} className="text-left px-3 py-2 text-[0.7rem] font-bold uppercase text-[var(--text-tertiary)] border-b border-[var(--border-primary)]">{h}</th>)}
+                {tab === 'machines' && ['Code','Nom','Pôle','Ateliers','Actif','Actions'].map((h) => <th key={h} className="text-left px-3 py-2 text-[0.7rem] font-bold uppercase text-[var(--text-tertiary)] border-b border-[var(--border-primary)]">{h}</th>)}
+                {tab === 'operateurs' && ['Nom','Matricule','Pôle','Ateliers','Actif','Actions'].map((h) => <th key={h} className="text-left px-3 py-2 text-[0.7rem] font-bold uppercase text-[var(--text-tertiary)] border-b border-[var(--border-primary)]">{h}</th>)}
                 {tab === 'causes' && ['Code','Libellé','Actif','Actions'].map((h) => <th key={h} className="text-left px-3 py-2 text-[0.7rem] font-bold uppercase text-[var(--text-tertiary)] border-b border-[var(--border-primary)]">{h}</th>)}
                 {tab === 'checkpoints' && ['Code','Libellé','Catégorie','Obligatoire','Actions'].map((h) => <th key={h} className="text-left px-3 py-2 text-[0.7rem] font-bold uppercase text-[var(--text-tertiary)] border-b border-[var(--border-primary)]">{h}</th>)}
                 {tab === 'users' && ['Email','Nom','Rôle','Pôle','Actif','Actions'].map((h) => <th key={h} className="text-left px-3 py-2 text-[0.7rem] font-bold uppercase text-[var(--text-tertiary)] border-b border-[var(--border-primary)]">{h}</th>)}
@@ -141,12 +175,14 @@ export default function AdminPage() {
                       <td className="px-3 py-2 border-b border-[var(--border-primary)] font-mono font-semibold">{item.codeMachine}</td>
                       <td className="px-3 py-2 border-b border-[var(--border-primary)] font-semibold">{item.nom}</td>
                       <td className="px-3 py-2 border-b border-[var(--border-primary)]">{item.pole?.icone} {item.pole?.nom}</td>
+                      <td className="px-3 py-2 border-b border-[var(--border-primary)] text-[0.82rem]">{item.machineAteliers?.length > 0 ? item.machineAteliers.map((l: any) => l.atelier?.nom).join(', ') : <span className="text-[var(--text-tertiary)]">—</span>}</td>
                       <td className="px-3 py-2 border-b border-[var(--border-primary)]"><span className={`inline-flex px-2 py-0.5 rounded-full text-[0.72rem] font-semibold uppercase ${item.actif ? 'bg-[var(--accent-green-dim)] text-[var(--accent-green)]' : 'bg-[var(--accent-red-dim)] text-[var(--accent-red)]'}`}>{item.actif ? 'Actif' : 'Inactif'}</span></td>
                     </>}
                     {tab === 'operateurs' && <>
                       <td className="px-3 py-2 border-b border-[var(--border-primary)] font-semibold">{item.nom}</td>
                       <td className="px-3 py-2 border-b border-[var(--border-primary)] font-mono">{item.matricule || '—'}</td>
                       <td className="px-3 py-2 border-b border-[var(--border-primary)]">{item.pole?.icone} {item.pole?.nom}</td>
+                      <td className="px-3 py-2 border-b border-[var(--border-primary)] text-[0.82rem]">{item.operateurAteliers?.length > 0 ? item.operateurAteliers.map((l: any) => l.atelier?.nom).join(', ') : <span className="text-[var(--text-tertiary)]">—</span>}</td>
                       <td className="px-3 py-2 border-b border-[var(--border-primary)]"><span className={`inline-flex px-2 py-0.5 rounded-full text-[0.72rem] font-semibold uppercase ${item.actif ? 'bg-[var(--accent-green-dim)] text-[var(--accent-green)]' : 'bg-[var(--accent-red-dim)] text-[var(--accent-red)]'}`}>{item.actif ? 'Actif' : 'Inactif'}</span></td>
                     </>}
                     {tab === 'causes' && <>
@@ -176,6 +212,9 @@ export default function AdminPage() {
                     <td className="px-3 py-2 border-b border-[var(--border-primary)]">
                       <div className="flex gap-1">
                         <button onClick={() => setModal(item)} className="w-7 h-7 rounded flex items-center justify-center text-[0.85rem] hover:bg-[var(--bg-tertiary)]" title="Modifier">✏️</button>
+                        {(tab === 'machines' || tab === 'operateurs') && (
+                          <button onClick={() => openLinkModal(tab === 'machines' ? 'machine' : 'operateur', item)} className="w-7 h-7 rounded flex items-center justify-center text-[0.85rem] hover:bg-[var(--bg-tertiary)]" title="Gérer ateliers">🔗</button>
+                        )}
                         <button onClick={() => handleDelete(tab, item.id, item.nom || item.libelle || item.code)} className="w-7 h-7 rounded flex items-center justify-center text-[0.85rem] hover:bg-[var(--bg-tertiary)]" title="Supprimer">🗑️</button>
                       </div>
                     </td>
@@ -246,8 +285,84 @@ export default function AdminPage() {
               </div>
             </div>
           )}
+
+          {tab === 'params' && (
+            <div className="space-y-5">
+              <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg p-5">
+                <div className="font-mono font-bold text-base mb-3.5">🔧 Paramètres Généraux</div>
+                <div className="text-[0.85rem] font-semibold text-[var(--text-secondary)] mb-3">État de la base de données</div>
+                {stats ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 mb-5">
+                    {[
+                      { l: 'Pôles', v: stats.poles }, { l: 'Ateliers', v: stats.ateliers },
+                      { l: 'Machines', v: stats.machines }, { l: 'Opérateurs', v: stats.operateurs },
+                      { l: 'Utilisateurs', v: stats.users }, { l: 'Dossiers', v: stats.dossiers },
+                      { l: "Causes d'arrêt", v: stats.causes_arret }, { l: 'Checkpoints', v: stats.checkpoints },
+                      { l: "Logs d'actions", v: stats.logs_actions },
+                    ].map((s) => (
+                      <div key={s.l} className="bg-[var(--bg-tertiary)] rounded-md p-3 text-center">
+                        <div className="text-[0.68rem] text-[var(--text-tertiary)] uppercase tracking-wider mb-0.5">{s.l}</div>
+                        <div className="font-mono font-bold text-[1.3rem]">{s.v}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : <div className="text-[var(--text-tertiary)]">Chargement...</div>}
+                <div className="text-[0.85rem] font-semibold text-[var(--text-secondary)] mb-3">Actions système</div>
+                <div className="flex flex-wrap gap-2.5">
+                  <button onClick={() => { startTransition(async () => { const d = await getExportData('backup'); const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'printseq_config_' + new Date().toISOString().slice(0, 10) + '.json'; a.click(); URL.revokeObjectURL(url); toast.success('Configuration exportée'); }); }} disabled={isPending}
+                    className="px-4 py-2.5 rounded-md text-[0.85rem] bg-[var(--bg-tertiary)] border border-[var(--border-primary)] hover:bg-[var(--accent-blue-dim)]">📥 Exporter configuration</button>
+                  <button onClick={() => { startTransition(async () => { const logs = await getAdminLogs(); if (!logs.length) { toast.warning('Aucun log'); return; } const csv = ['Date;Utilisateur;Action;Entité;ID;Détails'].concat(logs.map((l: any) => `${l.dateAction};${l.utilisateur?.nom || 'Système'};${l.typeAction};${l.entite || ''};${l.entiteId || ''};${l.detailsJson || ''}`)).join('\n'); const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'printseq_logs_' + new Date().toISOString().slice(0, 10) + '.csv'; a.click(); URL.revokeObjectURL(url); toast.success('Logs exportés (CSV)'); }); }} disabled={isPending}
+                    className="px-4 py-2.5 rounded-md text-[0.85rem] bg-[var(--bg-tertiary)] border border-[var(--border-primary)] hover:bg-[var(--accent-blue-dim)]">📋 Exporter logs</button>
+                  <button onClick={() => { if (confirm('⚠️ Cette action va réinitialiser les données de démonstration via /api/seed. Continuer ?')) { window.location.href = '/api/seed'; } }}
+                    className="ml-auto px-4 py-2.5 rounded-md text-[0.85rem] font-semibold bg-[var(--accent-red-dim)] text-[var(--accent-red)] border border-[rgba(239,68,68,0.2)] hover:bg-[var(--accent-red)] hover:text-white transition-colors">🔄 Réinitialiser données démo</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* ============ LINK MODAL (Machine-Atelier / Operateur-Atelier) ============ */}
+      {linkModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setLinkModal(null)}>
+          <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-xl p-6 w-full max-w-[450px] max-h-[90vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-mono font-bold text-lg">Ateliers de {linkModal.item.nom || linkModal.item.codeMachine}</h3>
+              <button onClick={() => setLinkModal(null)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-[var(--bg-tertiary)] text-lg">✕</button>
+            </div>
+            {/* Current links */}
+            <div className="flex flex-wrap gap-1.5 mb-4 min-h-[32px]">
+              {(() => {
+                const links = linkModal.type === 'machine' ? (linkModal.item.machineAteliers || []) : (linkModal.item.operateurAteliers || []);
+                return links.length === 0
+                  ? <span className="text-[var(--text-tertiary)] text-[0.85rem]">Aucun atelier lié</span>
+                  : links.map((l: any) => (
+                    <span key={l.atelier?.id || l.id} className="inline-flex items-center gap-1 px-2.5 py-1 bg-[var(--accent-blue-dim)] text-[var(--accent-blue)] rounded-full text-[0.8rem] font-semibold">
+                      {l.atelier?.nom}
+                      <button onClick={() => handleUnlink(l.atelier?.id || l.atelierId)} className="hover:text-[var(--accent-red)] ml-0.5">×</button>
+                    </span>
+                  ));
+              })()}
+            </div>
+            {/* Add new link */}
+            <div className="flex gap-2">
+              <select id="linkAtelierSelect" className="flex-1 px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.85rem]">
+                <option value="">— Ajouter un atelier —</option>
+                {linkAteliers.filter((a) => {
+                  const links = linkModal.type === 'machine' ? (linkModal.item.machineAteliers || []) : (linkModal.item.operateurAteliers || []);
+                  const linkedIds = links.map((l: any) => l.atelier?.id || l.atelierId);
+                  return !linkedIds.includes(a.id);
+                }).map((a: any) => <option key={a.id} value={a.id}>{a.nom}</option>)}
+              </select>
+              <button onClick={() => { const sel = document.getElementById('linkAtelierSelect') as HTMLSelectElement; handleLink(sel.value); }} disabled={isPending}
+                className="px-4 py-2 rounded-md font-semibold text-white text-[0.85rem] btn-gradient-blue">Ajouter</button>
+            </div>
+            <div className="flex justify-end mt-5">
+              <button onClick={() => { setLinkModal(null); loadData(); }} className="px-4 py-2 rounded-md text-[0.85rem] border border-[var(--border-primary)] hover:bg-[var(--bg-tertiary)]">Fermer</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ============ MODAL ============ */}
       {modal && (

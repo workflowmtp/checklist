@@ -137,6 +137,19 @@ export default async function DossierPage({ params }: { params: { id: string } }
                         </div>
                         {t.commentaire && <div className="text-[0.78rem] text-[var(--accent-orange)] mt-0.5">💬 {t.commentaire}</div>}
                       </div>
+                      {/* Task action buttons rendered via client-side script bridge */}
+                      {(dossier.statut === 'EN_COURS' || dossier.statut === 'EN_ATTENTE') && !isDone && !isBlocked && (
+                        <div className="flex gap-1 flex-shrink-0" dangerouslySetInnerHTML={{ __html:
+                          t.statut === 'EN_ATTENTE' ?
+                            `<button onclick="window.__taskAction&&window.__taskAction('${t.id}','start')" class="px-2 py-1 rounded text-[0.72rem] font-semibold bg-[var(--accent-blue-dim)] text-[var(--accent-blue)] border border-[rgba(59,130,246,0.2)] hover:bg-[var(--accent-blue)] hover:text-white transition-colors">▶ Démarrer</button>` :
+                          t.statut === 'EN_COURS' ?
+                            `<button onclick="window.__taskAction&&window.__taskAction('${t.id}','pause')" class="px-2 py-1 rounded text-[0.72rem] font-semibold bg-[var(--accent-orange-dim)] text-[var(--accent-orange)] border border-[rgba(245,158,11,0.2)]">⏸ Pause</button>` +
+                            `<button onclick="window.__taskAction&&window.__taskAction('${t.id}','validate')" class="px-2 py-1 rounded text-[0.72rem] font-semibold bg-[var(--accent-green-dim)] text-[var(--accent-green)] border border-[rgba(34,197,94,0.2)]">✓ Valider</button>` +
+                            `<button onclick="window.__taskAction&&window.__taskAction('${t.id}','nc')" class="px-2 py-1 rounded text-[0.72rem] font-semibold bg-[var(--accent-red-dim)] text-[var(--accent-red)] border border-[rgba(239,68,68,0.2)]">✗ NC</button>` :
+                          t.statut === 'EN_PAUSE' ?
+                            `<button onclick="window.__taskAction&&window.__taskAction('${t.id}','resume')" class="px-2 py-1 rounded text-[0.72rem] font-semibold bg-[var(--accent-blue-dim)] text-[var(--accent-blue)] border border-[rgba(59,130,246,0.2)]">▶ Reprendre</button>` : ''
+                        }} />
+                      )}
                     </div>
                   </div>
                 );

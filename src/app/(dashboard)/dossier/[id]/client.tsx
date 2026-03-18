@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -21,6 +21,16 @@ export function DossierClient({ dossier }: { dossier: any }) {
   const isEnCours = dossier.statut === 'EN_COURS';
   const isAttente = dossier.statut === 'EN_ATTENTE';
   const activeStop = dossier.arrets?.find((a: any) => a.statut === 'ACTIF');
+
+  // Listen for task action events from server-rendered buttons
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { taskId, action } = (e as CustomEvent).detail;
+      handleTask(taskId, action);
+    };
+    document.addEventListener('taskAction', handler);
+    return () => document.removeEventListener('taskAction', handler);
+  });
 
   // Task actions
   const handleTask = (taskId: string, action: string) => {
@@ -56,7 +66,8 @@ export function DossierClient({ dossier }: { dossier: any }) {
     if (bonnes <= 0 && calage <= 0 && gache <= 0) { toast.error('Saisissez au moins une quantité'); return; }
     if (gache > 0 && !motif?.trim()) { toast.error('Motif obligatoire si gâche > 0'); return; }
     startTransition(async () => {
-      await declareProduction(dossier.id, { bonnes: +bonnes, calage: +calage, gache: +gache, motifGache: motif, etatTirage: etat });
+      const result = await declareProduction(dossier.id, { bonnes: +bonnes, calage: +calage, gache: +gache, motifGache: motif, etatTirage: etat });
+      if (result?.warning) toast.warning(result.warning);
       toast.success('Production déclarée');
       setModal(null);
       router.refresh();

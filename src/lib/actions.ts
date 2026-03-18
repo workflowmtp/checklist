@@ -57,6 +57,16 @@ export async function getHomeData() {
 }
 
 // ============================================================
+// SIDEBAR POLES
+// ============================================================
+export async function getSidebarPoles() {
+  return prisma.pole.findMany({
+    select: { id: true, nom: true, icone: true },
+    orderBy: { createdAt: 'asc' },
+  });
+}
+
+// ============================================================
 // POLE DATA
 // ============================================================
 export async function getPoleData(poleId: string) {
@@ -267,18 +277,29 @@ export async function declareProduction(dossierId: string, data: {
 }) {
   const user = await getCurrentUser();
   const dossier = await prisma.dossier.findUnique({ where: { id: dossierId } });
-  if (!dossier) return;
+  if (!dossier) return { warning: null };
+  const total = data.bonnes + data.calage + data.gache;
+
+  // Check for overshoot > 10% of commanded quantity
+  const existing = await prisma.declarationProduction.findMany({ where: { dossierId }, select: { totalEngage: true } });
+  const prevTotal = existing.reduce((s, d) => s + (d.totalEngage || 0), 0);
+  let warning: string | null = null;
+  if (prevTotal + total > dossier.quantiteCommandee * 1.1 && data.etatTirage === 'conforme') {
+    warning = 'Attention : dépassement > 10% de la quantité commandée.';
+  }
+
   await prisma.declarationProduction.create({
     data: {
       dossierId, machineId: dossier.machineId,
       bonnes: data.bonnes, calage: data.calage, gache: data.gache,
-      totalEngage: data.bonnes + data.calage + data.gache,
+      totalEngage: total,
       motifGache: data.motifGache || null, etatTirage: data.etatTirage,
       declareParId: user?.id,
     },
   });
-  await logAction('declare_production', 'declarations_production', dossierId);
+  await logAction('declare_production', 'declarations_production', dossierId, { bonnes: data.bonnes, calage: data.calage, gache: data.gache, etat: data.etatTirage });
   revalidatePath(`/dossier/${dossierId}`);
+  return { warning };
 }
 
 // ============================================================
@@ -369,8 +390,15 @@ export async function createPassation(dossierId: string, data: {
 
   await prisma.dossier.update({ where: { id: dossierId }, data: { sessionNumero: newSession } });
 
-  // Swap operators
-  await prisma.dossierOperateur.deleteMany({ where: { dossierId } });
+  // Replace only the principal operator, keep aides
+  const oldLinks = await prisma.dossierOperateur.findMany({ where: { dossierId } });
+  const principal = oldLinks.find((l) => l.role === 'Conducteur principal');
+  if (principal) {
+    await prisma.dossierOperateur.delete({ where: { id: principal.id } });
+  } else if (oldLinks.length > 0) {
+    // Fallback: if no explicit principal found, remove the first link
+    await prisma.dossierOperateur.delete({ where: { id: oldLinks[0].id } });
+  }
   await prisma.dossierOperateur.create({ data: { dossierId, operateurId: data.versOperateurId, role: 'Conducteur principal' } });
 
   await logAction('passation', 'passations', dossierId, { from: fromOpId, to: data.versOperateurId });
@@ -414,16 +442,21 @@ export async function getHistoriqueData(filters: {
     if (filters.dateTo) where.dateDossier.lte = new Date(filters.dateTo);
   }
 
-  return prisma.dossier.findMany({
-    where,
-    include: {
-      pole: { select: { nom: true, icone: true } },
-      machine: { select: { codeMachine: true } },
-      declarations: { select: { totalEngage: true } },
-    },
-    orderBy: { dateDossier: 'desc' },
-    take: 200,
-  });
+  const [dossiers, poles, machines] = await Promise.all([
+    prisma.dossier.findMany({
+      where,
+      include: {
+        pole: { select: { nom: true, icone: true } },
+        machine: { select: { codeMachine: true } },
+        declarations: { select: { totalEngage: true, bonnes: true, gache: true } },
+      },
+      orderBy: { dateDossier: 'desc' },
+      take: 200,
+    }),
+    prisma.pole.findMany({ select: { id: true, nom: true, icone: true } }),
+    prisma.machine.findMany({ select: { id: true, codeMachine: true } }),
+  ]);
+  return { dossiers, poles, machines };
 }
 
 // ============================================================
@@ -438,7 +471,7 @@ export async function getDashboardData(filters?: { poleId?: string; dateFrom?: s
     if (filters?.dateTo) where.dateDossier.lte = new Date(filters.dateTo);
   }
 
-  const [dossiers, declarations, arrets, controles, taches, passations, poles, arretCauses] = await Promise.all([
+  const [dossiers, declarations, arrets, controles, taches, passations, poles, arretCauses, machines, dossierOps] = await Promise.all([
     prisma.dossier.findMany({ where, select: { id: true, statut: true, poleId: true, machineId: true, quantiteCommandee: true, dateDebut: true, dateFin: true } }),
     prisma.declarationProduction.findMany({ where: { dossier: where }, select: { dossierId: true, bonnes: true, calage: true, gache: true, totalEngage: true } }),
     prisma.arret.findMany({ where: { dossier: where }, select: { id: true, dossierId: true, dureeMs: true } }),
@@ -447,6 +480,8 @@ export async function getDashboardData(filters?: { poleId?: string; dateFrom?: s
     prisma.passation.count({ where: { dossier: where } }),
     prisma.pole.findMany({ select: { id: true, nom: true, icone: true, couleur: true } }),
     prisma.arretCause.findMany({ where: { arret: { dossier: where } }, include: { cause: { select: { id: true, libelle: true } } } }),
+    prisma.machine.findMany({ select: { id: true, nom: true, codeMachine: true, poleId: true } }),
+    prisma.dossierOperateur.findMany({ where: { dossier: where }, select: { dossierId: true, operateurId: true }, }),
   ]);
 
   // Aggregate
@@ -503,12 +538,52 @@ export async function getDashboardData(filters?: { poleId?: string; dateFrom?: s
     };
   });
 
+  // Per-machine
+  const perMachine = machines.map((machine) => {
+    const mDos = dossiers.filter((d) => d.machineId === machine.id);
+    if (mDos.length === 0) return null;
+    const mIds = new Set(mDos.map((d) => d.id));
+    const mDecls = declarations.filter((d) => mIds.has(d.dossierId));
+    const mArrets = arrets.filter((a) => mIds.has(a.dossierId));
+    let mE = 0, mG = 0, mStop = 0, mProd = 0;
+    mDecls.forEach((d) => { mE += d.totalEngage; mG += d.gache; });
+    mArrets.forEach((a) => { mStop += a.dureeMs || 0; });
+    mDos.forEach((d) => {
+      if (d.dateDebut && d.dateFin) mProd += new Date(d.dateFin).getTime() - new Date(d.dateDebut).getTime();
+      else if (d.dateDebut && d.statut === 'EN_COURS') mProd += Date.now() - new Date(d.dateDebut).getTime();
+    });
+    const poleName = poles.find((p) => p.id === machine.poleId);
+    return {
+      machine, pole: poleName || null, dossiers: mDos.length, engage: mE, gache: mG,
+      txGache: mE > 0 ? (mG / mE * 100) : 0, stopMs: mStop, arrets: mArrets.length,
+      prodMs: mProd, txDispo: mProd > 0 ? Math.max(0, (mProd - mStop) / mProd * 100) : 100,
+    };
+  }).filter(Boolean);
+
+  // Per-operator
+  const opMap: Record<string, Set<string>> = {};
+  dossierOps.forEach((link) => {
+    if (!dossierIds.has(link.dossierId)) return;
+    if (!opMap[link.operateurId]) opMap[link.operateurId] = new Set();
+    opMap[link.operateurId].add(link.dossierId);
+  });
+  const operateurIds = Object.keys(opMap);
+  const operateurs = operateurIds.length > 0 ? await prisma.operateur.findMany({ where: { id: { in: operateurIds } }, select: { id: true, nom: true, matricule: true } }) : [];
+  const perOp = operateurs.map((op) => {
+    const opDosIds = opMap[op.id] || new Set();
+    const oDecls = declarations.filter((d) => opDosIds.has(d.dossierId));
+    const oArrets = arrets.filter((a) => opDosIds.has(a.dossierId));
+    let oB = 0, oG = 0, oE = 0;
+    oDecls.forEach((d) => { oB += d.bonnes; oG += d.gache; oE += d.totalEngage; });
+    return { op, dossiers: opDosIds.size, bonnes: oB, gache: oG, engage: oE, txGache: oE > 0 ? (oG / oE * 100) : 0, arrets: oArrets.length };
+  });
+
   return {
     nbTotal: dossiers.length, nbEnCours, nbCloture, nbAttente, qteCmd,
     totBonnes, totCalage, totGache, totEngage, txGache, totalProdMs,
     totStopMs, nbArrets: arrets.length, mttr, txDispo,
     nbCtrlBon, nbCtrlMauv, txConf, nbTacheConf, nbTacheNC,
-    nbPassations: passations, pareto, perPole, poles,
+    nbPassations: passations, pareto, perPole, perMachine, perOp, poles,
   };
 }
 
@@ -559,7 +634,17 @@ export async function saveMachine(id: string | null, data: { codeMachine: string
 }
 
 export async function deleteMachine(id: string) {
+  // Check for active dossiers using this machine
+  const activeDos = await prisma.dossier.count({
+    where: { machineId: id, statut: { in: [StatutDossier.EN_COURS, StatutDossier.EN_ATTENTE] } },
+  });
+  if (activeDos > 0) {
+    throw new Error(`Impossible : ${activeDos} dossier(s) actif(s) utilisent cette machine`);
+  }
   await prisma.machineAtelier.deleteMany({ where: { machineId: id } });
+  // Clean up related task templates and families
+  await prisma.tacheModele.deleteMany({ where: { machineId: id } });
+  await prisma.familleTache.deleteMany({ where: { machineId: id } });
   await prisma.machine.delete({ where: { id } });
   revalidatePath('/admin');
 }
@@ -628,6 +713,61 @@ export async function deleteEntity(collection: string, id: string) {
 }
 
 // ============================================================
+// ADMIN: Machine-Atelier & Operateur-Atelier linking
+// ============================================================
+export async function linkMachineAtelier(machineId: string, atelierId: string) {
+  const exists = await prisma.machineAtelier.findFirst({ where: { machineId, atelierId } });
+  if (exists) return;
+  await prisma.machineAtelier.create({ data: { machineId, atelierId } });
+  await logAction('link', 'machine_atelier', machineId, { atelierId });
+  revalidatePath('/admin');
+}
+
+export async function unlinkMachineAtelier(machineId: string, atelierId: string) {
+  await prisma.machineAtelier.deleteMany({ where: { machineId, atelierId } });
+  await logAction('unlink', 'machine_atelier', machineId, { atelierId });
+  revalidatePath('/admin');
+}
+
+export async function linkOperateurAtelier(operateurId: string, atelierId: string) {
+  const exists = await prisma.operateurAtelier.findFirst({ where: { operateurId, atelierId } });
+  if (exists) return;
+  await prisma.operateurAtelier.create({ data: { operateurId, atelierId } });
+  await logAction('link', 'operateur_atelier', operateurId, { atelierId });
+  revalidatePath('/admin');
+}
+
+export async function unlinkOperateurAtelier(operateurId: string, atelierId: string) {
+  await prisma.operateurAtelier.deleteMany({ where: { operateurId, atelierId } });
+  await logAction('unlink', 'operateur_atelier', operateurId, { atelierId });
+  revalidatePath('/admin');
+}
+
+export async function getAteliersForPole(poleId: string) {
+  return prisma.atelier.findMany({ where: { poleId }, orderBy: { nom: 'asc' } });
+}
+
+// ============================================================
+// ADMIN: Paramètres tab - DB stats & system actions
+// ============================================================
+export async function getAdminStats() {
+  const [poles, ateliers, machines, operateurs, users, dossiers, causes, checkpoints, logs] = await Promise.all([
+    prisma.pole.count(), prisma.atelier.count(), prisma.machine.count(),
+    prisma.operateur.count(), prisma.user.count(), prisma.dossier.count(),
+    prisma.causeArret.count(), prisma.checkpoint.count(), prisma.logAction.count(),
+  ]);
+  return { poles, ateliers, machines, operateurs, users, dossiers, causes_arret: causes, checkpoints, logs_actions: logs };
+}
+
+export async function getAdminLogs() {
+  return prisma.logAction.findMany({
+    include: { utilisateur: { select: { nom: true } } },
+    orderBy: { dateAction: 'desc' },
+    take: 500,
+  });
+}
+
+// ============================================================
 // TASK CONFIG
 // ============================================================
 export async function getTaskConfigData(machineId?: string) {
@@ -675,8 +815,49 @@ export async function getExportData(type: string) {
     case 'taches': return prisma.tacheDossier.findMany({ include: { dossier: { select: { dossierNumero: true } }, validePar: { select: { nom: true } } } });
     case 'controles': return prisma.controleProduction.findMany({ include: { dossier: { select: { dossierNumero: true } }, auteur: { select: { nom: true } } } });
     case 'passations': return prisma.passation.findMany({ include: { dossier: { select: { dossierNumero: true } }, deOperateur: { select: { nom: true } }, versOperateur: { select: { nom: true } } } });
+    case 'kpi': {
+      const dashData = await getDashboardData();
+      return [{
+        dossiers_total: dashData.nbTotal, en_cours: dashData.nbEnCours, clotures: dashData.nbCloture,
+        bonnes: dashData.totBonnes, gache: dashData.totGache, engage: dashData.totEngage,
+        tx_gache: dashData.txGache.toFixed(2), disponibilite: dashData.txDispo.toFixed(2),
+        mttr_ms: Math.round(dashData.mttr), conformite: dashData.txConf.toFixed(2),
+        arrets: dashData.nbArrets, controles_bon: dashData.nbCtrlBon, controles_mauvais: dashData.nbCtrlMauv,
+        passations: dashData.nbPassations,
+      }];
+    }
+    case 'backup': {
+      const [dos, decls, arrets, taches, ctrls, pass, poles, ateliers, machines, ops, causes, cps, users] = await Promise.all([
+        prisma.dossier.findMany(), prisma.declarationProduction.findMany(), prisma.arret.findMany({ include: { arretCauses: true } }),
+        prisma.tacheDossier.findMany(), prisma.controleProduction.findMany(), prisma.passation.findMany(),
+        prisma.pole.findMany(), prisma.atelier.findMany(), prisma.machine.findMany(), prisma.operateur.findMany(),
+        prisma.causeArret.findMany(), prisma.checkpoint.findMany(), prisma.user.findMany({ select: { id: true, email: true, nom: true, role: true, poleId: true, atelierId: true, actif: true } }),
+      ]);
+      return [{ dossiers: dos, declarations: decls, arrets, taches, controles: ctrls, passations: pass, poles, ateliers, machines, operateurs: ops, causes_arret: causes, checkpoints: cps, users, exported_at: new Date().toISOString() }];
+    }
     default: return [];
   }
+}
+
+export async function getExportStats() {
+  const [dossiers, declarations, arrets, taches, controles, passations, logs] = await Promise.all([
+    prisma.dossier.count(),
+    prisma.declarationProduction.count(),
+    prisma.arret.count(),
+    prisma.tacheDossier.count(),
+    prisma.controleProduction.count(),
+    prisma.passation.count(),
+    prisma.logAction.count(),
+  ]);
+  return [
+    { label: 'Dossiers', count: dossiers },
+    { label: 'Déclarations', count: declarations },
+    { label: 'Arrêts', count: arrets },
+    { label: 'Tâches exécutées', count: taches },
+    { label: 'Contrôles', count: controles },
+    { label: 'Passations', count: passations },
+    { label: "Logs d'actions", count: logs },
+  ];
 }
 
 // ============================================================

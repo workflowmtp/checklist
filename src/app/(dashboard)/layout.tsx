@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { getSidebarPoles } from '@/lib/actions';
 import { DashboardShell } from './dashboard-shell';
 
 export default async function DashboardLayout({
@@ -14,5 +15,7 @@ export default async function DashboardLayout({
     redirect('/login');
   }
 
-  return <DashboardShell>{children}</DashboardShell>;
+  const poles = await getSidebarPoles();
+
+  return <DashboardShell poles={poles}>{children}</DashboardShell>;
 }

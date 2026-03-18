@@ -50,7 +50,11 @@ const mainNav: NavSection[] = [
   },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  poles?: { id: string; nom: string; icone: string }[];
+}
+
+export function Sidebar({ poles = [] }: SidebarProps) {
   const pathname = usePathname();
   const { data: session } = useSession();
   const { sidebarCollapsed, sidebarMobileOpen, closeMobileSidebar } = useAppStore();
@@ -126,6 +130,35 @@ export function Sidebar() {
               ))}
             </div>
           ))}
+
+          {/* Dynamic Poles */}
+          {poles.length > 0 && (
+            <div>
+              {!sidebarCollapsed && (
+                <div className="text-[0.65rem] font-bold uppercase tracking-[1px] text-[var(--text-tertiary)] px-3 pt-4 pb-1.5 whitespace-nowrap">
+                  Pôles
+                </div>
+              )}
+              {poles.map((pole) => (
+                <Link
+                  key={pole.id}
+                  href={`/pole/${pole.id}`}
+                  onClick={closeMobileSidebar}
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2.5 rounded-md text-[0.9rem] mb-0.5',
+                    'transition-all duration-200 whitespace-nowrap',
+                    pathname === `/pole/${pole.id}`
+                      ? 'bg-[var(--accent-blue-dim)] text-[var(--accent-blue)] font-semibold'
+                      : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]',
+                  )}
+                  title={sidebarCollapsed ? pole.nom : undefined}
+                >
+                  <span className="w-5 text-center flex-shrink-0 text-base">{pole.icone}</span>
+                  {!sidebarCollapsed && <span>{pole.nom}</span>}
+                </Link>
+              ))}
+            </div>
+          )}
         </nav>
 
         {/* Footer: User info */}
