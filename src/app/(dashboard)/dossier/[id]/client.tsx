@@ -11,6 +11,52 @@ import {
 } from '@/lib/actions';
 import { formatNumber, formatDuration } from '@/lib/utils';
 
+export function TaskActionButtons({ taskId, statut, dossierId }: { taskId: string; statut: string; dossierId: string }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
+  const handle = (action: string) => {
+    if (action === 'nc') {
+      // Dispatch event so DossierClient picks it up for the NC modal
+      document.dispatchEvent(new CustomEvent('taskAction', { detail: { taskId, action } }));
+      return;
+    }
+    startTransition(async () => {
+      if (action === 'start') await taskStart(dossierId, taskId);
+      else if (action === 'pause') await taskPause(dossierId, taskId);
+      else if (action === 'resume') await taskResume(dossierId, taskId);
+      else if (action === 'validate') await taskValidate(dossierId, taskId);
+      toast.success('Action effectuée');
+      router.refresh();
+    });
+  };
+
+  if (statut === 'EN_ATTENTE') {
+    return (
+      <div className="flex gap-1 flex-shrink-0">
+        <button onClick={() => handle('start')} disabled={isPending} className="px-2 py-1 rounded text-[0.72rem] font-semibold bg-[var(--accent-blue-dim)] text-[var(--accent-blue)] border border-[rgba(59,130,246,0.2)] hover:bg-[var(--accent-blue)] hover:text-white transition-colors">▶ Démarrer</button>
+      </div>
+    );
+  }
+  if (statut === 'EN_COURS') {
+    return (
+      <div className="flex gap-1 flex-shrink-0">
+        <button onClick={() => handle('pause')} disabled={isPending} className="px-2 py-1 rounded text-[0.72rem] font-semibold bg-[var(--accent-orange-dim)] text-[var(--accent-orange)] border border-[rgba(245,158,11,0.2)]">⏸ Pause</button>
+        <button onClick={() => handle('validate')} disabled={isPending} className="px-2 py-1 rounded text-[0.72rem] font-semibold bg-[var(--accent-green-dim)] text-[var(--accent-green)] border border-[rgba(34,197,94,0.2)]">✓ Valider</button>
+        <button onClick={() => handle('nc')} disabled={isPending} className="px-2 py-1 rounded text-[0.72rem] font-semibold bg-[var(--accent-red-dim)] text-[var(--accent-red)] border border-[rgba(239,68,68,0.2)]">✗ NC</button>
+      </div>
+    );
+  }
+  if (statut === 'EN_PAUSE') {
+    return (
+      <div className="flex gap-1 flex-shrink-0">
+        <button onClick={() => handle('resume')} disabled={isPending} className="px-2 py-1 rounded text-[0.72rem] font-semibold bg-[var(--accent-blue-dim)] text-[var(--accent-blue)] border border-[rgba(59,130,246,0.2)]">▶ Reprendre</button>
+      </div>
+    );
+  }
+  return null;
+}
+
 export function DossierClient({ dossier }: { dossier: any }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -176,14 +222,7 @@ export function DossierClient({ dossier }: { dossier: any }) {
         </>
       )}
 
-      {/* Task action buttons — rendered via global event */}
-      {(isEnCours || isAttente) && (
-        <script dangerouslySetInnerHTML={{ __html: `
-          window.__taskAction = function(taskId, action) {
-            document.dispatchEvent(new CustomEvent('taskAction', { detail: { taskId, action } }));
-          };
-        `}} />
-      )}
+      {/* Task NC modal event listener is handled via useEffect above */}
 
       {/* ===== MODALS ===== */}
       {modal && (
