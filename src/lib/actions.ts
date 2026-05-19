@@ -627,9 +627,9 @@ export async function getAdminData(tab: string) {
     case 'operateurs': return prisma.operateur.findMany({ include: { pole: true, operateurAteliers: { include: { atelier: true } } }, orderBy: { nom: 'asc' } });
     case 'causes': return prisma.causeArret.findMany({ orderBy: { code: 'asc' } });
     case 'checkpoints': return prisma.checkpoint.findMany({ include: { pole: true }, orderBy: { code: 'asc' } });
-    case 'users': return prisma.user.findMany({ include: { pole: true, atelier: true }, orderBy: { nom: 'asc' } });
+    case 'users': return prisma.user.findMany({ include: { pole: true, atelier: true, role: true }, orderBy: { nom: 'asc' } });
     case 'permissions': return prisma.permission.findMany({ orderBy: [{ groupe: 'asc' }, { code: 'asc' }] });
-    case 'role-permissions': return prisma.rolePermission.findMany({ include: { permission: true }, orderBy: [{ role: 'asc' }, { permission: { groupe: 'asc' } }] });
+    case 'role-permissions': return prisma.rolePermission.findMany({ include: { permission: true, role: true }, orderBy: [{ roleId: 'asc' }, { permission: { groupe: 'asc' } }] });
     default: return [];
   }
 }
@@ -712,9 +712,9 @@ export async function saveCheckpoint(id: string | null, data: { code: string; li
   revalidatePath('/admin');
 }
 
-export async function saveUser(id: string | null, data: { email: string; nom: string; motDePasse?: string; role: any; poleId?: string | null; atelierId?: string | null; actif: boolean }) {
+export async function saveUser(id: string | null, data: { email: string; nom: string; motDePasse?: string; roleId: string; poleId?: string | null; atelierId?: string | null; actif: boolean }) {
   await requirePermission(id ? 'update_user' : 'create_user');
-  const updateData: any = { email: data.email, nom: data.nom, role: data.role, poleId: data.poleId || null, atelierId: data.atelierId || null, actif: data.actif };
+  const updateData: any = { email: data.email, nom: data.nom, roleId: data.roleId, poleId: data.poleId || null, atelierId: data.atelierId || null, actif: data.actif };
   if (data.motDePasse) updateData.motDePasse = await bcrypt.hash(data.motDePasse, 10);
   if (id) { await prisma.user.update({ where: { id }, data: updateData }); }
   else {
@@ -731,13 +731,13 @@ export async function savePermission(id: string | null, data: { code: string; li
   revalidatePath('/admin');
 }
 
-export async function toggleRolePermission(role: string, permissionId: string) {
+export async function toggleRolePermission(roleId: string, permissionId: string) {
   await requirePermission('update_role');
-  const existing = await prisma.rolePermission.findFirst({ where: { role: role as any, permissionId } });
+  const existing = await prisma.rolePermission.findFirst({ where: { roleId, permissionId } });
   if (existing) {
     await prisma.rolePermission.delete({ where: { id: existing.id } });
   } else {
-    await prisma.rolePermission.create({ data: { role: role as any, permissionId } });
+    await prisma.rolePermission.create({ data: { roleId, permissionId } });
   }
   revalidatePath('/admin');
 }

@@ -1,18 +1,19 @@
-import { Role } from '@prisma/client';
 import prisma from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 
 // Cache en mémoire pour éviter des requêtes DB à chaque vérification
-let permissionsCache: Map<Role, string[]> | null = null;
+let permissionsCache: Map<string, string[]> | null = null;
+let rolesCache: any[] | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL = 60 * 1000; // 1 minute
 
 // Force fresh load on server restart (after seed changes)
 permissionsCache = null;
+rolesCache = null;
 cacheTimestamp = 0;
 
-async function loadPermissions(): Promise<Map<Role, string[]>> {
+async function loadPermissions(): Promise<Map<string, string[]>> {
   const now = Date.now();
   if (permissionsCache && (now - cacheTimestamp) < CACHE_TTL) {
     return permissionsCache;
@@ -20,14 +21,15 @@ async function loadPermissions(): Promise<Map<Role, string[]>> {
 
   try {
     const rolePerms = await prisma.rolePermission.findMany({
-      include: { permission: true },
+      include: { permission: true, role: true },
     });
 
-    const map = new Map<Role, string[]>();
+    const map = new Map<string, string[]>();
     for (const rp of rolePerms) {
-      const existing = map.get(rp.role) || [];
+      const key = rp.roleId;
+      const existing = map.get(key) || [];
       existing.push(rp.permission.code);
-      map.set(rp.role, existing);
+      map.set(key, existing);
     }
 
     permissionsCache = map;
@@ -35,25 +37,27 @@ async function loadPermissions(): Promise<Map<Role, string[]>> {
     return map;
   } catch (error) {
     console.error('Failed to load permissions from DB:', error);
-    return new Map<Role, string[]>();
+    return new Map<string, string[]>();
   }
 }
 
 export function invalidatePermissionsCache() {
   permissionsCache = null;
+  rolesCache = null;
   cacheTimestamp = 0;
 }
 
-export async function hasPermission(role: Role, action: string): Promise<boolean> {
+export async function hasPermission(roleId: string, action: string): Promise<boolean> {
   const map = await loadPermissions();
-  const perms = map.get(role);
+  const perms = map.get(roleId);
   if (!perms) return false;
   return perms.includes(action);
 }
 
-export async function getPermissionsForRole(role: Role): Promise<string[]> {
+export async function getPermissionsForRole(roleId: string): Promise<string[]> {
+  if (!roleId) return [];
   const map = await loadPermissions();
-  return map.get(role) || [];
+  return map.get(roleId) || [];
 }
 
 export async function getAllPermissions() {
@@ -62,25 +66,33 @@ export async function getAllPermissions() {
 
 export async function getRolePermissions() {
   return prisma.rolePermission.findMany({
-    include: { permission: true },
+    include: { permission: true, role: true },
     orderBy: { permission: { groupe: 'asc' } },
   });
 }
 
-export function getRoleLabel(role: Role): string {
-  const labels: Record<Role, string> = {
-    [Role.ADMINISTRATEUR]: 'Administrateur',
-    [Role.RESPONSABLE_POLE]: 'Responsable de Pôle',
-    [Role.CHEF_ATELIER]: "Chef d'Atelier",
-    [Role.CONDUCTEUR]: 'Conducteur',
-    [Role.MAINTENANCE]: 'Maintenance',
-    [Role.CONTROLE_QUALITE]: 'Contrôle Qualité',
-  };
-  return labels[role] || role;
+export async function getAllRoles() {
+  const now = Date.now();
+  if (rolesCache && (now - cacheTimestamp) < CACHE_TTL) {
+    return rolesCache;
+  }
+  const roles = await prisma.role.findMany({ orderBy: { nom: 'asc' } });
+  rolesCache = roles;
+  return roles;
 }
 
-export function getAllRoles(): Role[] {
-  return Object.values(Role);
+export async function getRoleById(id: string) {
+  return prisma.role.findUnique({ where: { id } });
+}
+
+export async function getRoleByCode(code: string) {
+  return prisma.role.findUnique({ where: { code } });
+}
+
+export function getRoleLabel(role: any): string {
+  if (!role) return '—';
+  if (typeof role === 'string') return role;
+  return role.nom || role.code || '—';
 }
 
 export async function requirePermission(action: string): Promise<{ user: any; allowed: true }> {

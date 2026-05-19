@@ -4,7 +4,6 @@ import { useState, useEffect, useTransition } from 'react';
 import { toast } from 'sonner';
 import { getAdminData, savePole, deletePole, saveAtelier, deleteAtelier, saveMachine, deleteMachine, saveOperateur, deleteOperateur, saveCause, saveCheckpoint, saveUser, savePermission, toggleRolePermission, deleteEntity, linkMachineAtelier, unlinkMachineAtelier, linkOperateurAtelier, unlinkOperateurAtelier, getAteliersForPole, getAdminStats, getAdminLogs, getExportData } from '@/lib/actions';
 import { getRoleLabel, getAllRoles } from '@/lib/permissions';
-import { Role } from '@prisma/client';
 
 const TABS = [
   { id: 'poles', icon: '🏭', label: 'Pôles' },
@@ -27,6 +26,7 @@ export default function AdminPage() {
   const [isPending, startTransition] = useTransition();
   const [allPermissions, setAllPermissions] = useState<any[]>([]);
   const [rolePermsMap, setRolePermsMap] = useState<Record<string, Set<string>>>({});
+  const [roles, setRoles] = useState<any[]>([]);
   const [poles, setPoles] = useState<any[]>([]);
   const [linkModal, setLinkModal] = useState<any>(null);
   const [linkAteliers, setLinkAteliers] = useState<any[]>([]);
@@ -46,10 +46,15 @@ export default function AdminPage() {
       const rpList = d as any[];
       const map: Record<string, Set<string>> = {};
       rpList.forEach((rp: any) => {
-        if (!map[rp.role]) map[rp.role] = new Set();
-        map[rp.role].add(rp.permissionId);
+        const rid = rp.roleId;
+        if (!map[rid]) map[rid] = new Set();
+        map[rid].add(rp.permissionId);
       });
       setRolePermsMap(map);
+    }
+    if (tab === 'users' || tab === 'role-permissions') {
+      const r = await getAllRoles();
+      setRoles(r);
     }
     if (tab === 'params') {
       const s = await getAdminStats();
@@ -235,8 +240,8 @@ export default function AdminPage() {
                   <thead>
                     <tr>
                       <th className="text-left px-2 py-2 border-b border-[var(--border-primary)] text-[0.7rem] font-bold uppercase text-[var(--text-tertiary)] sticky left-0 bg-[var(--bg-card)] min-w-[180px]">Permission</th>
-                      {getAllRoles().map((r) => (
-                        <th key={r} className="px-2 py-2 border-b border-[var(--border-primary)] text-[0.7rem] font-bold uppercase text-[var(--text-tertiary)] text-center min-w-[110px]">{getRoleLabel(r)}</th>
+                      {roles.map((r: any) => (
+                        <th key={r.id} className="px-2 py-2 border-b border-[var(--border-primary)] text-[0.7rem] font-bold uppercase text-[var(--text-tertiary)] text-center min-w-[110px]">{getRoleLabel(r)}</th>
                       ))}
                     </tr>
                   </thead>
@@ -251,7 +256,7 @@ export default function AdminPage() {
                       Object.entries(grouped).forEach(([groupe, perms]) => {
                         rows.push(
                           <tr key={`g-${groupe}`}>
-                            <td colSpan={getAllRoles().length + 1} className="px-2 pt-4 pb-1 font-mono font-bold text-[0.75rem] uppercase text-[var(--accent-blue)] border-b border-[var(--border-primary)]">{groupe}</td>
+                            <td colSpan={roles.length + 1} className="px-2 pt-4 pb-1 font-mono font-bold text-[0.75rem] uppercase text-[var(--accent-blue)] border-b border-[var(--border-primary)]">{groupe}</td>
                           </tr>
                         );
                         perms.forEach((p: any) => {
@@ -261,13 +266,13 @@ export default function AdminPage() {
                                 <span className="font-semibold">{p.libelle}</span>
                                 <span className="ml-1.5 text-[0.7rem] text-[var(--text-tertiary)] font-mono">{p.code}</span>
                               </td>
-                              {getAllRoles().map((r) => {
-                                const checked = rolePermsMap[r]?.has(p.id) || false;
+                              {roles.map((r: any) => {
+                                const checked = rolePermsMap[r.id]?.has(p.id) || false;
                                 return (
-                                  <td key={r} className="px-2 py-1.5 border-b border-[var(--border-primary)] text-center">
+                                  <td key={r.id} className="px-2 py-1.5 border-b border-[var(--border-primary)] text-center">
                                     <input type="checkbox" checked={checked} onChange={() => {
                                       startTransition(async () => {
-                                        await toggleRolePermission(r, p.id);
+                                        await toggleRolePermission(r.id, p.id);
                                         loadData();
                                       });
                                     }} className="w-4 h-4 cursor-pointer accent-[var(--accent-blue)]" />
@@ -517,7 +522,7 @@ export default function AdminPage() {
 
             {/* USERS */}
             {tab === 'users' && (
-              <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); handleSave(saveUser, [modal.id || null, { email: f.get('email') as string, nom: f.get('nom') as string, motDePasse: (f.get('motDePasse') as string) || undefined, role: f.get('role') as string, poleId: (f.get('poleId') as string) || null, atelierId: null, actif: f.get('actif') === 'on' }]); }}>
+              <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); handleSave(saveUser, [modal.id || null, { email: f.get('email') as string, nom: f.get('nom') as string, motDePasse: (f.get('motDePasse') as string) || undefined, roleId: f.get('roleId') as string, poleId: (f.get('poleId') as string) || null, atelierId: null, actif: f.get('actif') === 'on' }]); }}>
                 <div className="space-y-3">
                   <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Email *</label>
                     <input name="email" type="email" defaultValue={modal.email || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
@@ -526,8 +531,8 @@ export default function AdminPage() {
                   <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Mot de passe {modal.id ? '(laisser vide pour ne pas changer)' : '*'}</label>
                     <input name="motDePasse" type="password" required={!modal.id} className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring" /></div>
                   <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Rôle *</label>
-                    <select name="role" defaultValue={modal.role || 'CONDUCTEUR'} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring">
-                      {getAllRoles().map((r) => <option key={r} value={r}>{getRoleLabel(r)}</option>)}
+                    <select name="roleId" defaultValue={modal.roleId || ''} required className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring">
+                      {roles.map((r: any) => <option key={r.id} value={r.id}>{getRoleLabel(r)}</option>)}
                     </select></div>
                   <div><label className="block text-[0.78rem] font-semibold text-[var(--text-secondary)] mb-1">Pôle</label>
                     <select name="poleId" defaultValue={modal.poleId || ''} className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-md text-[0.9rem] focus-ring">

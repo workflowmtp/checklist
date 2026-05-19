@@ -21,6 +21,7 @@ export const authOptions: NextAuthOptions = {
           const user = await prisma.user.findUnique({
             where: { email: credentials.email },
             include: {
+              role: { select: { id: true, code: true, nom: true } },
               pole: { select: { id: true, nom: true, icone: true, couleur: true } },
               atelier: { select: { id: true, nom: true } },
             },
@@ -46,12 +47,14 @@ export const authOptions: NextAuthOptions = {
             },
           }).catch(() => {});
 
-          const permissions = await getPermissionsForRole(user.role);
+          const roleId = user.roleId;
+          const permissions = roleId ? await getPermissionsForRole(roleId) : [];
 
           return {
             id: user.id,
             name: user.nom,
             email: user.email,
+            roleId: user.roleId,
             role: user.role,
             permissions,
             poleId: user.poleId,
@@ -79,6 +82,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.email = (user as any).email;
+        token.roleId = (user as any).roleId;
         token.role = (user as any).role;
         token.permissions = (user as any).permissions;
         token.poleId = (user as any).poleId;
@@ -89,10 +93,12 @@ export const authOptions: NextAuthOptions = {
       }
       // Force refresh permissions if token version is outdated
       if (Number((token as any).version || 0) < TOKEN_VERSION) {
-        const u = await prisma.user.findUnique({ where: { id: token.id as string } });
+        const u = await prisma.user.findUnique({ where: { id: token.id as string }, include: { role: { select: { id: true, code: true, nom: true } } } });
         if (u) {
-          const perms = await getPermissionsForRole(u.role);
+          const perms = u.roleId ? await getPermissionsForRole(u.roleId) : [];
           token.permissions = perms;
+          token.roleId = u.roleId;
+          token.role = u.role;
           token.version = TOKEN_VERSION;
         }
       }
@@ -102,6 +108,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         (session.user as any).id = token.id;
         (session.user as any).email = token.email;
+        (session.user as any).roleId = token.roleId;
         (session.user as any).role = token.role;
         (session.user as any).permissions = token.permissions;
         (session.user as any).poleId = token.poleId;

@@ -45,13 +45,19 @@ export async function POST(req: NextRequest) {
     // Hasher le mot de passe
     const hashedPassword = await bcrypt.hash(password, 12);
 
+    // Trouver le rôle par défaut
+    const defaultRole = await prisma.role.findUnique({ where: { code: 'CONDUCTEUR' } });
+    if (!defaultRole) {
+      return NextResponse.json({ error: 'Rôle par défaut non trouvé' }, { status: 500 });
+    }
+
     // Créer l'utilisateur
     const user = await prisma.user.create({
       data: {
         email,
         nom,
         motDePasse: hashedPassword,
-        role: 'CONDUCTEUR',
+        roleId: defaultRole.id,
         actif: true,
       },
     });
@@ -59,7 +65,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         message: 'Compte créé avec succès',
-        user: { id: user.id, email: user.email, nom: user.nom, role: user.role },
+        user: { id: user.id, email: user.email, nom: user.nom, role: defaultRole.code },
       },
       { status: 201 }
     );

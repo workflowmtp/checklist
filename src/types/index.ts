@@ -1,5 +1,3 @@
-import { Role } from '@prisma/client';
-
 // ============================================================
 // Session & Auth
 // ============================================================
@@ -7,7 +5,8 @@ export interface SessionUser {
   id: string;
   name: string;
   email: string;
-  role: Role;
+  roleId: string | null;
+  role: { id: string; code: string; nom: string } | null;
   permissions: string[];
   poleId: string | null;
   atelierId: string | null;

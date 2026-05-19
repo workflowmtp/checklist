@@ -104,7 +104,7 @@ model User {
   email             String                  @unique
   nom               String
   motDePasse        String                  @map("mot_de_passe")
-  role              Role
+  roleId            String?                 @map("role_id")
   poleId            String?                 @map("pole_id")
   atelierId         String?                 @map("atelier_id")
   actif             Boolean                 @default(true)
@@ -120,6 +120,7 @@ model User {
   tachesValidated   TacheDossier[]
   atelier           Atelier?                @relation("UserAtelier", fields: [atelierId], references: [id])
   pole              Pole?                   @relation("UserPole", fields: [poleId], references: [id])
+  role              Role?                   @relation(fields: [roleId], references: [id])
 
   @@map("users")
 }
@@ -137,11 +138,12 @@ model Permission {
 
 model RolePermission {
   id           String     @id @default(cuid())
-  role         Role
+  roleId       String     @map("role_id")
   permissionId String     @map("permission_id")
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
-  @@unique([role, permissionId])
+  @@unique([roleId, permissionId])
   @@map("role_permissions")
 }
 
@@ -412,13 +414,17 @@ model SyncQueue {
   @@map("sync_queue")
 }
 
-enum Role {
-  ADMINISTRATEUR   @map("administrateur")
-  RESPONSABLE_POLE @map("responsable_pole")
-  CHEF_ATELIER     @map("chef_atelier")
-  CONDUCTEUR       @map("conducteur")
-  MAINTENANCE      @map("maintenance")
-  CONTROLE_QUALITE @map("controle_qualite")
+model Role {
+  id              String           @id @default(cuid())
+  code            String           @unique
+  nom             String
+  description     String?
+  actif           Boolean          @default(true)
+  isSystem        Boolean          @default(false) @map("is_system")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  users           User[]
+  rolePermissions RolePermission[]
 
   @@map("roles")
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient, Role } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 export async function POST() {
@@ -9,20 +9,21 @@ export async function POST() {
       return NextResponse.json({ error: 'Not allowed in production' }, { status: 403 });
     }
 
-    // Run the seed by importing the logic
-    // For the API route, we just create the minimal admin user if none exist
     const prisma = new PrismaClient();
     const userCount = await prisma.user.count();
 
     if (userCount === 0) {
-      await prisma.user.create({
-        data: {
-          email: 'admin@multiprint.cm',
-          nom: 'Administrateur Système',
-          motDePasse: await bcrypt.hash('admin', 10),
-          role: Role.ADMINISTRATEUR,
-        },
-      });
+      const adminRole = await prisma.role.findUnique({ where: { code: 'ADMINISTRATEUR' } });
+      if (adminRole) {
+        await prisma.user.create({
+          data: {
+            email: 'admin@multiprint.cm',
+            nom: 'Administrateur Système',
+            motDePasse: await bcrypt.hash('admin', 10),
+            roleId: adminRole.id,
+          },
+        });
+      }
     }
 
     await prisma.$disconnect();

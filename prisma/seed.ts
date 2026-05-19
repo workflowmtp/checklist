@@ -1,10 +1,26 @@
-import { PrismaClient, Role, StatutDossier, StatutTache, StatutArret } from '@prisma/client';
+import { PrismaClient, StatutDossier, StatutTache, StatutArret } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('🌱 Seeding PrintSeq database — Données démo MULTIPRINT v9.0...');
+
+  // ===== ROLES (créer d'abord car référencé par users) =====
+  const rolesData = [
+    { code: 'ADMINISTRATEUR', nom: 'Administrateur', description: 'Accès complet au système', isSystem: true },
+    { code: 'RESPONSABLE_POLE', nom: 'Responsable de Pôle', description: 'Gestion de son pôle et reporting', isSystem: true },
+    { code: 'CHEF_ATELIER', nom: "Chef d'Atelier", description: 'Gestion de son atelier et production', isSystem: true },
+    { code: 'CONDUCTEUR', nom: 'Conducteur', description: 'Opérations de production', isSystem: true },
+    { code: 'MAINTENANCE', nom: 'Maintenance', description: 'Gestion des arrêts et maintenance', isSystem: true },
+    { code: 'CONTROLE_QUALITE', nom: 'Contrôle Qualité', description: 'Contrôles qualité et conformité', isSystem: true },
+  ];
+  for (const r of rolesData) {
+    await prisma.role.upsert({ where: { code: r.code }, update: {}, create: r });
+  }
+  const roles = await prisma.role.findMany();
+  const roleMap = new Map(roles.map(r => [r.code, r.id]));
+  console.log('✅ Rôles créés');
 
   // ===== CLEAN (preserve users) =====
   // Detach users from poles/ateliers before deleting them
@@ -132,18 +148,18 @@ async function main() {
 
   // ===== UTILISATEURS (upsert — preserve existing users) =====
   const usersData = [
-    { id: 'u_admin', email: 'admin@multiprint.cm', nom: 'Administrateur Système', motDePasse: await hash('admin'), role: Role.ADMINISTRATEUR },
-    { id: 'u_chef1', email: 'chef1@multiprint.cm', nom: 'Nana Robert', motDePasse: await hash('chef1'), role: Role.CHEF_ATELIER },
-    { id: 'u_cond1', email: 'cond1@multiprint.cm', nom: 'Mbarga Jean-Paul', motDePasse: await hash('cond1'), role: Role.CONDUCTEUR },
-    { id: 'u_resp1', email: 'resp1@multiprint.cm', nom: 'Tchuente Alain', motDePasse: await hash('resp1'), role: Role.RESPONSABLE_POLE },
-    { id: 'u_chef2', email: 'chef2@multiprint.cm', nom: 'Sontsa Gabriel', motDePasse: await hash('chef2'), role: Role.CHEF_ATELIER },
-    { id: 'u_maint', email: 'maint1@multiprint.cm', nom: 'Biya Emmanuel', motDePasse: await hash('maint1'), role: Role.MAINTENANCE },
-    { id: 'u_qc', email: 'qc1@multiprint.cm', nom: 'Onana Cécile', motDePasse: await hash('qc1'), role: Role.CONTROLE_QUALITE },
+    { id: 'u_admin', email: 'admin@multiprint.cm', nom: 'Administrateur Système', motDePasse: await hash('admin'), roleId: roleMap.get('ADMINISTRATEUR')! },
+    { id: 'u_chef1', email: 'chef1@multiprint.cm', nom: 'Nana Robert', motDePasse: await hash('chef1'), roleId: roleMap.get('CHEF_ATELIER')! },
+    { id: 'u_cond1', email: 'cond1@multiprint.cm', nom: 'Mbarga Jean-Paul', motDePasse: await hash('cond1'), roleId: roleMap.get('CONDUCTEUR')! },
+    { id: 'u_resp1', email: 'resp1@multiprint.cm', nom: 'Tchuente Alain', motDePasse: await hash('resp1'), roleId: roleMap.get('RESPONSABLE_POLE')! },
+    { id: 'u_chef2', email: 'chef2@multiprint.cm', nom: 'Sontsa Gabriel', motDePasse: await hash('chef2'), roleId: roleMap.get('CHEF_ATELIER')! },
+    { id: 'u_maint', email: 'maint1@multiprint.cm', nom: 'Biya Emmanuel', motDePasse: await hash('maint1'), roleId: roleMap.get('MAINTENANCE')! },
+    { id: 'u_qc', email: 'qc1@multiprint.cm', nom: 'Onana Cécile', motDePasse: await hash('qc1'), roleId: roleMap.get('CONTROLE_QUALITE')! },
   ];
   for (const u of usersData) {
     const existing = await prisma.user.findUnique({ where: { email: u.email } });
     if (!existing) {
-      await prisma.user.create({ data: u });
+      await prisma.user.create({ data: { id: u.id, email: u.email, nom: u.nom, motDePasse: u.motDePasse, roleId: u.roleId } });
     }
   }
   console.log('✅ Utilisateurs upsertés (existants préservés)');
@@ -246,8 +262,8 @@ async function main() {
 
   // ===== ROLE-PERMISSIONS =====
   const rolePerms: Record<string, string[]> = {
-    [Role.ADMINISTRATEUR]: permissions.map(p => p.code),
-    [Role.RESPONSABLE_POLE]: [
+    ADMINISTRATEUR: permissions.map(p => p.code),
+    RESPONSABLE_POLE: [
       'read_all_poles','read_dossier','create_dossier','update_dossier','close_dossier',
       'read_task','read_declaration','read_stop','read_control','read_handover',
       'read_kpi','read_history','create_export','read_export','use_ai',
@@ -261,33 +277,35 @@ async function main() {
       'create_task_config','read_task_config','update_task_config','delete_task_config',
       'create_erp_config','read_erp_config','update_erp_config','delete_erp_config',
     ],
-    [Role.CHEF_ATELIER]: [
+    CHEF_ATELIER: [
       'read_pole','read_atelier','read_dossier','create_dossier','update_dossier','close_dossier',
       'create_task','read_task','update_task','execute_task','create_declaration','read_declaration',
       'create_stop','read_stop','update_stop','create_control','read_control','create_handover','read_handover',
       'read_kpi','read_history','create_export','read_export','use_ai',
       'read_machine','read_operator','read_cause','read_checkpoint','read_task_config',
     ],
-    [Role.CONDUCTEUR]: [
+    CONDUCTEUR: [
       'read_pole','read_atelier','read_dossier','execute_task','create_declaration','read_declaration',
       'create_stop','read_stop','create_control','read_control','create_handover','read_handover',
       'read_machine','read_operator',
     ],
-    [Role.MAINTENANCE]: [
+    MAINTENANCE: [
       'read_all_poles','read_dossier','create_stop','read_stop','update_stop','delete_stop',
       'read_kpi','read_history','read_machine','read_cause',
     ],
-    [Role.CONTROLE_QUALITE]: [
+    CONTROLE_QUALITE: [
       'read_all_poles','read_dossier','create_control','read_control','update_control','delete_control',
       'read_kpi','read_history','read_checkpoint',
     ],
   };
   const allPerms = await prisma.permission.findMany();
   const permMap = new Map(allPerms.map(p => [p.code, p.id]));
-  for (const [role, codes] of Object.entries(rolePerms)) {
+  for (const [roleCode, codes] of Object.entries(rolePerms)) {
+    const rid = roleMap.get(roleCode);
+    if (!rid) continue;
     for (const code of codes) {
       const pid = permMap.get(code);
-      if (pid) await prisma.rolePermission.create({ data: { role: role as Role, permissionId: pid } });
+      if (pid) await prisma.rolePermission.create({ data: { roleId: rid, permissionId: pid } });
     }
   }
   console.log('✅ Rôles-Permissions créés');
