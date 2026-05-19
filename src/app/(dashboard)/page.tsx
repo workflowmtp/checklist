@@ -1,14 +1,21 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getHomeData } from '@/lib/actions';
+import { requireAnyPermission } from '@/lib/permissions';
 import { getStatutDossierLabel } from '@/lib/utils';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
   const session = await getServerSession(authOptions);
   const user = session?.user;
+  try {
+    await requireAnyPermission(['read_all_poles', 'read_pole']);
+  } catch {
+    redirect('/login');
+  }
   const { poles, activeDossiers, machineCount, counts } = await getHomeData();
   const enCours = counts['EN_COURS'] || 0;
   const enAttente = counts['EN_ATTENTE'] || 0;

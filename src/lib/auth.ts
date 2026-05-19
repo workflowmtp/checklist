@@ -75,6 +75,7 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async jwt({ token, user }) {
+      const TOKEN_VERSION = 2; // bump this after permission seed changes
       if (user) {
         token.id = user.id;
         token.email = (user as any).email;
@@ -84,6 +85,16 @@ export const authOptions: NextAuthOptions = {
         token.atelierId = (user as any).atelierId;
         token.pole = (user as any).pole;
         token.atelier = (user as any).atelier;
+        token.version = TOKEN_VERSION;
+      }
+      // Force refresh permissions if token version is outdated
+      if (Number((token as any).version || 0) < TOKEN_VERSION) {
+        const u = await prisma.user.findUnique({ where: { id: token.id as string } });
+        if (u) {
+          const perms = await getPermissionsForRole(u.role);
+          token.permissions = perms;
+          token.version = TOKEN_VERSION;
+        }
       }
       return token;
     },

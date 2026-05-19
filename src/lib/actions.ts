@@ -3,6 +3,7 @@
 import prisma from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { requirePermission, requireAnyPermission } from '@/lib/permissions';
 import { StatutDossier, StatutTache, StatutArret } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { revalidatePath } from 'next/cache';
@@ -26,6 +27,7 @@ async function logAction(type: string, entite: string, entiteId?: string, detail
 // HOME DATA
 // ============================================================
 export async function getHomeData() {
+  await requireAnyPermission(['read_all_poles', 'read_pole']);
   const [poles, dossiers, machineCount] = await Promise.all([
     prisma.pole.findMany({
       include: {
@@ -70,6 +72,7 @@ export async function getSidebarPoles() {
 // POLE DATA
 // ============================================================
 export async function getPoleData(poleId: string) {
+  await requireAnyPermission(['read_all_poles', 'read_pole']);
   const pole = await prisma.pole.findUnique({
     where: { id: poleId },
     include: {
@@ -97,6 +100,7 @@ export async function getPoleData(poleId: string) {
 // ATELIER DATA
 // ============================================================
 export async function getAtelierData(atelierId: string) {
+  await requireAnyPermission(['read_all_poles', 'read_pole', 'read_atelier']);
   const atelier = await prisma.atelier.findUnique({
     where: { id: atelierId },
     include: {
@@ -118,6 +122,7 @@ export async function getAtelierData(atelierId: string) {
 // DOSSIER OPERATIONS
 // ============================================================
 export async function getDossierData(dossierId: string) {
+  await requirePermission('read_dossier');
   return prisma.dossier.findUnique({
     where: { id: dossierId },
     include: {
@@ -141,6 +146,7 @@ export async function getDossierData(dossierId: string) {
 }
 
 export async function getNewDossierData(poleId?: string, atelierId?: string) {
+  await requirePermission('create_dossier');
   const [poles, allAteliers, allMachineAteliers, allOpAteliers, existingNums] = await Promise.all([
     prisma.pole.findMany({ orderBy: { nom: 'asc' } }),
     prisma.atelier.findMany({ orderBy: { nom: 'asc' } }),
@@ -158,6 +164,7 @@ export async function createDossier(data: {
   observations?: string; startImmediately: boolean;
 }) {
   const user = await getCurrentUser();
+  await requirePermission('create_dossier');
   const now = new Date();
   const dossier = await prisma.dossier.create({
     data: {
@@ -203,6 +210,7 @@ export async function createDossier(data: {
 }
 
 export async function startDossier(dossierId: string) {
+  await requirePermission('update_dossier');
   await prisma.dossier.update({
     where: { id: dossierId },
     data: { statut: StatutDossier.EN_COURS, dateDebut: new Date() },
@@ -215,6 +223,7 @@ export async function startDossier(dossierId: string) {
 // TASK OPERATIONS
 // ============================================================
 export async function taskStart(dossierId: string, taskId: string) {
+  await requireAnyPermission(['update_task', 'execute_task']);
   const dossier = await prisma.dossier.findUnique({ where: { id: dossierId } });
   if (dossier?.statut === StatutDossier.EN_ATTENTE) {
     await prisma.dossier.update({ where: { id: dossierId }, data: { statut: StatutDossier.EN_COURS, dateDebut: new Date() } });
@@ -225,6 +234,7 @@ export async function taskStart(dossierId: string, taskId: string) {
 }
 
 export async function taskPause(dossierId: string, taskId: string) {
+  await requireAnyPermission(['update_task', 'execute_task']);
   const task = await prisma.tacheDossier.findUnique({ where: { id: taskId } });
   if (!task) return;
   const ref = task.dateReprise || task.dateDebut;
@@ -237,11 +247,13 @@ export async function taskPause(dossierId: string, taskId: string) {
 }
 
 export async function taskResume(dossierId: string, taskId: string) {
+  await requireAnyPermission(['update_task', 'execute_task']);
   await prisma.tacheDossier.update({ where: { id: taskId }, data: { statut: StatutTache.EN_COURS, dateReprise: new Date() } });
   revalidatePath(`/dossier/${dossierId}`);
 }
 
 export async function taskValidate(dossierId: string, taskId: string) {
+  await requireAnyPermission(['update_task', 'execute_task']);
   const user = await getCurrentUser();
   const task = await prisma.tacheDossier.findUnique({ where: { id: taskId } });
   if (!task) return;
@@ -256,6 +268,7 @@ export async function taskValidate(dossierId: string, taskId: string) {
 }
 
 export async function taskNC(dossierId: string, taskId: string, commentaire: string) {
+  await requireAnyPermission(['update_task', 'execute_task']);
   const user = await getCurrentUser();
   const task = await prisma.tacheDossier.findUnique({ where: { id: taskId } });
   if (!task) return;
@@ -276,6 +289,7 @@ export async function declareProduction(dossierId: string, data: {
   bonnes: number; calage: number; gache: number; motifGache?: string; etatTirage: string;
 }) {
   const user = await getCurrentUser();
+  await requirePermission('create_declaration');
   const dossier = await prisma.dossier.findUnique({ where: { id: dossierId } });
   if (!dossier) return { warning: null };
   const total = data.bonnes + data.calage + data.gache;
@@ -297,7 +311,7 @@ export async function declareProduction(dossierId: string, data: {
       declareParId: user?.id,
     },
   });
-  await logAction('declare_production', 'declarations_production', dossierId, { bonnes: data.bonnes, calage: data.calage, gache: data.gache, etat: data.etatTirage });
+  await logAction('create_declaration', 'declarations_production', dossierId, { bonnes: data.bonnes, calage: data.calage, gache: data.gache, etat: data.etatTirage });
   revalidatePath(`/dossier/${dossierId}`);
   return { warning };
 }
@@ -306,6 +320,7 @@ export async function declareProduction(dossierId: string, data: {
 // ARRÊTS
 // ============================================================
 export async function createArret(dossierId: string, causeIds: string[], commentaire?: string) {
+  await requirePermission('create_stop');
   const user = await getCurrentUser();
   const arret = await prisma.arret.create({
     data: {
@@ -321,6 +336,7 @@ export async function createArret(dossierId: string, causeIds: string[], comment
 }
 
 export async function resumeArret(dossierId: string, arretId: string, commentaire?: string) {
+  await requirePermission('update_stop');
   const user = await getCurrentUser();
   const arret = await prisma.arret.findUnique({ where: { id: arretId } });
   if (!arret) return;
@@ -337,6 +353,7 @@ export async function resumeArret(dossierId: string, arretId: string, commentair
 // CONTRÔLES
 // ============================================================
 export async function createControle(dossierId: string, details: { checkpoint_id: string; conforme: boolean }[], commentaire?: string) {
+  await requirePermission('create_control');
   const user = await getCurrentUser();
   const hasNC = details.some((d) => !d.conforme);
   await prisma.controleProduction.create({
@@ -367,6 +384,7 @@ export async function getCausesArret() {
 export async function createPassation(dossierId: string, data: {
   versOperateurId: string; note?: string;
 }) {
+  await requirePermission('create_handover');
   const dossier = await prisma.dossier.findUnique({
     where: { id: dossierId },
     include: { dossierOperateurs: true, declarations: true },
@@ -409,6 +427,7 @@ export async function createPassation(dossierId: string, data: {
 // CLÔTURE
 // ============================================================
 export async function cloturerDossier(dossierId: string, commentaire: string) {
+  await requirePermission('close_dossier');
   const user = await getCurrentUser();
   await prisma.dossier.update({
     where: { id: dossierId },
@@ -424,6 +443,7 @@ export async function cloturerDossier(dossierId: string, commentaire: string) {
 export async function getHistoriqueData(filters: {
   pole?: string; machine?: string; statut?: string; search?: string; dateFrom?: string; dateTo?: string;
 }) {
+  await requirePermission('read_history');
   const where: any = {};
   if (filters.pole) where.poleId = filters.pole;
   if (filters.machine) where.machineId = filters.machine;
@@ -463,6 +483,7 @@ export async function getHistoriqueData(filters: {
 // DASHBOARD KPI
 // ============================================================
 export async function getDashboardData(filters?: { poleId?: string; dateFrom?: string; dateTo?: string }) {
+  await requirePermission('read_kpi');
   const where: any = {};
   if (filters?.poleId) where.poleId = filters.poleId;
   if (filters?.dateFrom || filters?.dateTo) {
@@ -591,6 +612,14 @@ export async function getDashboardData(filters?: { poleId?: string; dateFrom?: s
 // ADMIN CRUD
 // ============================================================
 export async function getAdminData(tab: string) {
+  if (tab === 'poles') await requirePermission('read_pole');
+  else if (tab === 'ateliers') await requirePermission('read_atelier');
+  else if (tab === 'machines') await requirePermission('read_machine');
+  else if (tab === 'operateurs') await requirePermission('read_operator');
+  else if (tab === 'causes') await requirePermission('read_cause');
+  else if (tab === 'checkpoints') await requirePermission('read_checkpoint');
+  else if (tab === 'users') await requirePermission('read_user');
+  else if (tab === 'permissions' || tab === 'role-permissions') await requirePermission('read_role');
   switch (tab) {
     case 'poles': return prisma.pole.findMany({ include: { _count: { select: { ateliers: true, machines: true } } }, orderBy: { nom: 'asc' } });
     case 'ateliers': return prisma.atelier.findMany({ include: { pole: true, _count: { select: { machineAteliers: true, operateurAteliers: true } } }, orderBy: { nom: 'asc' } });
@@ -606,34 +635,40 @@ export async function getAdminData(tab: string) {
 }
 
 export async function savePole(id: string | null, data: { nom: string; icone: string; couleur: string; description?: string }) {
+  await requirePermission(id ? 'update_pole' : 'create_pole');
   if (id) { await prisma.pole.update({ where: { id }, data }); }
   else { await prisma.pole.create({ data }); }
   revalidatePath('/admin');
 }
 
 export async function deletePole(id: string) {
+  await requirePermission('delete_pole');
   await prisma.pole.delete({ where: { id } });
   revalidatePath('/admin');
 }
 
 export async function saveAtelier(id: string | null, data: { nom: string; poleId: string; description?: string }) {
+  await requirePermission(id ? 'update_atelier' : 'create_atelier');
   if (id) { await prisma.atelier.update({ where: { id }, data }); }
   else { await prisma.atelier.create({ data }); }
   revalidatePath('/admin');
 }
 
 export async function deleteAtelier(id: string) {
+  await requirePermission('delete_atelier');
   await prisma.atelier.delete({ where: { id } });
   revalidatePath('/admin');
 }
 
 export async function saveMachine(id: string | null, data: { codeMachine: string; nom: string; poleId: string; description?: string; actif: boolean }) {
+  await requirePermission(id ? 'update_machine' : 'create_machine');
   if (id) { await prisma.machine.update({ where: { id }, data }); }
   else { await prisma.machine.create({ data }); }
   revalidatePath('/admin');
 }
 
 export async function deleteMachine(id: string) {
+  await requirePermission('delete_machine');
   // Check for active dossiers using this machine
   const activeDos = await prisma.dossier.count({
     where: { machineId: id, statut: { in: [StatutDossier.EN_COURS, StatutDossier.EN_ATTENTE] } },
@@ -650,30 +685,35 @@ export async function deleteMachine(id: string) {
 }
 
 export async function saveOperateur(id: string | null, data: { nom: string; matricule?: string; poleId: string; actif: boolean }) {
+  await requirePermission(id ? 'update_operator' : 'create_operator');
   if (id) { await prisma.operateur.update({ where: { id }, data }); }
   else { await prisma.operateur.create({ data }); }
   revalidatePath('/admin');
 }
 
 export async function deleteOperateur(id: string) {
+  await requirePermission('delete_operator');
   await prisma.operateurAtelier.deleteMany({ where: { operateurId: id } });
   await prisma.operateur.delete({ where: { id } });
   revalidatePath('/admin');
 }
 
 export async function saveCause(id: string | null, data: { code: string; libelle: string; actif: boolean }) {
+  await requirePermission(id ? 'update_cause' : 'create_cause');
   if (id) { await prisma.causeArret.update({ where: { id }, data }); }
   else { await prisma.causeArret.create({ data }); }
   revalidatePath('/admin');
 }
 
 export async function saveCheckpoint(id: string | null, data: { code: string; libelle: string; categorie?: string; poleId?: string | null; obligatoire: boolean; actif: boolean; description?: string }) {
+  await requirePermission(id ? 'update_checkpoint' : 'create_checkpoint');
   if (id) { await prisma.checkpoint.update({ where: { id }, data }); }
   else { await prisma.checkpoint.create({ data }); }
   revalidatePath('/admin');
 }
 
 export async function saveUser(id: string | null, data: { email: string; nom: string; motDePasse?: string; role: any; poleId?: string | null; atelierId?: string | null; actif: boolean }) {
+  await requirePermission(id ? 'update_user' : 'create_user');
   const updateData: any = { email: data.email, nom: data.nom, role: data.role, poleId: data.poleId || null, atelierId: data.atelierId || null, actif: data.actif };
   if (data.motDePasse) updateData.motDePasse = await bcrypt.hash(data.motDePasse, 10);
   if (id) { await prisma.user.update({ where: { id }, data: updateData }); }
@@ -685,12 +725,14 @@ export async function saveUser(id: string | null, data: { email: string; nom: st
 }
 
 export async function savePermission(id: string | null, data: { code: string; libelle: string; description?: string; groupe: string }) {
+  await requirePermission(id ? 'update_role' : 'create_role');
   if (id) { await prisma.permission.update({ where: { id }, data }); }
   else { await prisma.permission.create({ data }); }
   revalidatePath('/admin');
 }
 
 export async function toggleRolePermission(role: string, permissionId: string) {
+  await requirePermission('update_role');
   const existing = await prisma.rolePermission.findFirst({ where: { role: role as any, permissionId } });
   if (existing) {
     await prisma.rolePermission.delete({ where: { id: existing.id } });
@@ -701,6 +743,12 @@ export async function toggleRolePermission(role: string, permissionId: string) {
 }
 
 export async function deleteEntity(collection: string, id: string) {
+  if (collection === 'users') await requirePermission('delete_user');
+  else if (collection === 'permissions') await requirePermission('delete_role');
+  else if (collection === 'poles') await requirePermission('delete_pole');
+  else if (collection === 'ateliers') await requirePermission('delete_atelier');
+  else if (collection === 'causes') await requirePermission('delete_cause');
+  else if (collection === 'checkpoints') await requirePermission('delete_checkpoint');
   switch (collection) {
     case 'poles': await prisma.pole.delete({ where: { id } }); break;
     case 'ateliers': await prisma.atelier.delete({ where: { id } }); break;
@@ -716,6 +764,7 @@ export async function deleteEntity(collection: string, id: string) {
 // ADMIN: Machine-Atelier & Operateur-Atelier linking
 // ============================================================
 export async function linkMachineAtelier(machineId: string, atelierId: string) {
+  await requirePermission('update_machine');
   const exists = await prisma.machineAtelier.findFirst({ where: { machineId, atelierId } });
   if (exists) return;
   await prisma.machineAtelier.create({ data: { machineId, atelierId } });
@@ -724,12 +773,14 @@ export async function linkMachineAtelier(machineId: string, atelierId: string) {
 }
 
 export async function unlinkMachineAtelier(machineId: string, atelierId: string) {
+  await requirePermission('update_machine');
   await prisma.machineAtelier.deleteMany({ where: { machineId, atelierId } });
   await logAction('unlink', 'machine_atelier', machineId, { atelierId });
   revalidatePath('/admin');
 }
 
 export async function linkOperateurAtelier(operateurId: string, atelierId: string) {
+  await requirePermission('update_operator');
   const exists = await prisma.operateurAtelier.findFirst({ where: { operateurId, atelierId } });
   if (exists) return;
   await prisma.operateurAtelier.create({ data: { operateurId, atelierId } });
@@ -738,6 +789,7 @@ export async function linkOperateurAtelier(operateurId: string, atelierId: strin
 }
 
 export async function unlinkOperateurAtelier(operateurId: string, atelierId: string) {
+  await requirePermission('update_operator');
   await prisma.operateurAtelier.deleteMany({ where: { operateurId, atelierId } });
   await logAction('unlink', 'operateur_atelier', operateurId, { atelierId });
   revalidatePath('/admin');
@@ -751,6 +803,7 @@ export async function getAteliersForPole(poleId: string) {
 // ADMIN: Paramètres tab - DB stats & system actions
 // ============================================================
 export async function getAdminStats() {
+  await requirePermission('read_log');
   const [poles, ateliers, machines, operateurs, users, dossiers, causes, checkpoints, logs] = await Promise.all([
     prisma.pole.count(), prisma.atelier.count(), prisma.machine.count(),
     prisma.operateur.count(), prisma.user.count(), prisma.dossier.count(),
@@ -760,6 +813,7 @@ export async function getAdminStats() {
 }
 
 export async function getAdminLogs() {
+  await requirePermission('read_log');
   return prisma.logAction.findMany({
     include: { utilisateur: { select: { nom: true } } },
     orderBy: { dateAction: 'desc' },
@@ -771,6 +825,7 @@ export async function getAdminLogs() {
 // TASK CONFIG
 // ============================================================
 export async function getTaskConfigData(machineId?: string) {
+  await requirePermission('read_task_config');
   const machines = await prisma.machine.findMany({ where: { actif: true }, include: { pole: { select: { icone: true, nom: true } } }, orderBy: { codeMachine: 'asc' } });
   let familles: any[] = [];
   let taches: any[] = [];
@@ -782,24 +837,28 @@ export async function getTaskConfigData(machineId?: string) {
 }
 
 export async function saveFamille(machineId: string, id: string | null, data: { nom: string; ordre: number }) {
+  await requirePermission(id ? 'update_task_config' : 'create_task_config');
   if (id) { await prisma.familleTache.update({ where: { id }, data: { ...data, machineId } }); }
   else { await prisma.familleTache.create({ data: { ...data, machineId } }); }
   revalidatePath('/configuration-taches');
 }
 
 export async function deleteFamille(id: string) {
+  await requirePermission('delete_task_config');
   await prisma.tacheModele.updateMany({ where: { familleId: id }, data: { familleId: null } });
   await prisma.familleTache.delete({ where: { id } });
   revalidatePath('/configuration-taches');
 }
 
 export async function saveTacheModele(machineId: string, id: string | null, data: { code: string; libelle: string; familleId?: string | null; position: number; tempsPrevuMin: number; bloquante: boolean }) {
+  await requirePermission(id ? 'update_task_config' : 'create_task_config');
   if (id) { await prisma.tacheModele.update({ where: { id }, data: { ...data, machineId } }); }
   else { await prisma.tacheModele.create({ data: { ...data, machineId } }); }
   revalidatePath('/configuration-taches');
 }
 
 export async function deleteTacheModele(id: string) {
+  await requirePermission('delete_task_config');
   await prisma.tacheModele.delete({ where: { id } });
   revalidatePath('/configuration-taches');
 }
@@ -808,6 +867,7 @@ export async function deleteTacheModele(id: string) {
 // EXPORTS
 // ============================================================
 export async function getExportData(type: string) {
+  await requirePermission('read_export');
   switch (type) {
     case 'dossiers': return prisma.dossier.findMany({ include: { pole: true, atelier: true, machine: true, declarations: true, arrets: true, taches: true } });
     case 'declarations': return prisma.declarationProduction.findMany({ include: { dossier: { select: { dossierNumero: true } }, machine: { select: { codeMachine: true } }, declarePar: { select: { nom: true } } } });
@@ -840,6 +900,7 @@ export async function getExportData(type: string) {
 }
 
 export async function getExportStats() {
+  await requirePermission('read_export');
   const [dossiers, declarations, arrets, taches, controles, passations, logs] = await Promise.all([
     prisma.dossier.count(),
     prisma.declarationProduction.count(),
@@ -871,6 +932,7 @@ export async function getOperateursForPole(poleId: string) {
 // ERP
 // ============================================================
 export async function getERPData() {
+  await requirePermission('read_erp_config');
   const [config, syncQueue] = await Promise.all([
     prisma.parametreIntegration.findFirst({ where: { typeSysteme: 'sage_x3' } }),
     prisma.syncQueue.findMany({ orderBy: { createdAt: 'desc' }, take: 20 }),
@@ -879,6 +941,7 @@ export async function getERPData() {
 }
 
 export async function saveERPConfig(data: { url: string; site: string; database: string; user: string }) {
+  await requirePermission('update_erp_config');
   const existing = await prisma.parametreIntegration.findFirst({ where: { typeSysteme: 'sage_x3' } });
   const configJson = JSON.stringify(data);
   if (existing) { await prisma.parametreIntegration.update({ where: { id: existing.id }, data: { configJson } }); }
@@ -887,6 +950,7 @@ export async function saveERPConfig(data: { url: string; site: string; database:
 }
 
 export async function simulateERPImport() {
+  await requirePermission('create_erp_config');
   const articles = ['Étiquettes Castel Beer 50cl', 'Film Maggi Cube 100g', 'Cartons Chococam 250g', 'Bouchons 26mm Brasseries'];
   const clients = ['SABC', 'Nestlé Cameroun', 'Chococam', 'Guinness Cameroun'];
   const idx = Math.floor(Math.random() * 4);

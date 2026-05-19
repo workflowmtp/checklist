@@ -17,6 +17,7 @@ interface NavLink {
   icon: string;
   label: string;
   matchPrefix?: string;
+  permission?: string | string[];
 }
 
 const mainNav: NavSection[] = [
@@ -24,34 +25,41 @@ const mainNav: NavSection[] = [
     title: 'Principal',
     items: [
       { href: '/', icon: '🏠', label: 'Accueil' },
-      { href: '/dashboard', icon: '📊', label: 'Dashboard KPI', matchPrefix: '/dashboard' },
+      { href: '/dashboard', icon: '📊', label: 'Dashboard KPI', matchPrefix: '/dashboard', permission: 'read_kpi' },
     ],
   },
   {
     title: 'Production',
     items: [
-      { href: '/configuration-taches', icon: '🔧', label: 'Config. Tâches', matchPrefix: '/configuration-taches' },
-      { href: '/historique', icon: '📜', label: 'Historique', matchPrefix: '/historique' },
-      { href: '/exports', icon: '📤', label: 'Exports', matchPrefix: '/exports' },
+      { href: '/configuration-taches', icon: '🔧', label: 'Config. Tâches', matchPrefix: '/configuration-taches', permission: ['create_task_config','read_task_config','update_task_config','delete_task_config'] },
+      { href: '/historique', icon: '📜', label: 'Historique', matchPrefix: '/historique', permission: 'read_history' },
+      { href: '/exports', icon: '📤', label: 'Exports', matchPrefix: '/exports', permission: ['read_export','create_export'] },
     ],
   },
   {
     title: 'Intelligence',
     items: [
-      { href: '/ai', icon: '🤖', label: 'PrintSeq AI', matchPrefix: '/ai' },
+      { href: '/ai', icon: '🤖', label: 'PrintSeq AI', matchPrefix: '/ai', permission: 'use_ai' },
     ],
   },
   {
     title: 'Système',
     items: [
-      { href: '/admin', icon: '⚙️', label: 'Administration', matchPrefix: '/admin' },
-      { href: '/erp', icon: '🔗', label: 'Intégration ERP', matchPrefix: '/erp' },
+      { href: '/admin', icon: '⚙️', label: 'Administration', matchPrefix: '/admin', permission: ['create_pole','read_pole','update_pole','delete_pole','create_atelier','read_atelier','update_atelier','delete_atelier','create_machine','read_machine','update_machine','delete_machine','create_operator','read_operator','update_operator','delete_operator','create_cause','read_cause','update_cause','delete_cause','create_checkpoint','read_checkpoint','update_checkpoint','delete_checkpoint','create_task_config','read_task_config','update_task_config','delete_task_config','create_user','read_user','update_user','delete_user','create_role','read_role','update_role','delete_role','read_log'] },
+      { href: '/erp', icon: '🔗', label: 'Intégration ERP', matchPrefix: '/erp', permission: ['create_erp_config','read_erp_config','update_erp_config','delete_erp_config'] },
     ],
   },
 ];
 
 interface SidebarProps {
   poles?: { id: string; nom: string; icone: string }[];
+}
+
+function userHasPerm(user: any, perm?: string | string[]): boolean {
+  if (!perm) return true;
+  const perms: string[] = user?.permissions || [];
+  if (Array.isArray(perm)) return perm.some((p) => perms.includes(p));
+  return perms.includes(perm);
 }
 
 export function Sidebar({ poles = [] }: SidebarProps) {
@@ -65,6 +73,13 @@ export function Sidebar({ poles = [] }: SidebarProps) {
     if (item.matchPrefix) return pathname.startsWith(item.matchPrefix);
     return pathname === item.href;
   };
+
+  const visibleSections = mainNav.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => userHasPerm(user, item.permission)),
+  })).filter((s) => s.items.length > 0);
+
+  const canViewPoles = userHasPerm(user, ['read_all_poles', 'read_pole']);
 
   return (
     <>
@@ -101,7 +116,7 @@ export function Sidebar({ poles = [] }: SidebarProps) {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-3 px-2">
-          {mainNav.map((section) => (
+          {visibleSections.map((section) => (
             <div key={section.title}>
               {!sidebarCollapsed && (
                 <div className="text-[0.65rem] font-bold uppercase tracking-[1px] text-[var(--text-tertiary)] px-3 pt-4 pb-1.5 whitespace-nowrap">
@@ -132,7 +147,7 @@ export function Sidebar({ poles = [] }: SidebarProps) {
           ))}
 
           {/* Dynamic Poles */}
-          {poles.length > 0 && (
+          {canViewPoles && poles.length > 0 && (
             <div>
               {!sidebarCollapsed && (
                 <div className="text-[0.65rem] font-bold uppercase tracking-[1px] text-[var(--text-tertiary)] px-3 pt-4 pb-1.5 whitespace-nowrap">

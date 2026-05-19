@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { requirePermission } from '@/lib/permissions';
 
 const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || '';
 const N8N_USER = process.env.N8N_USER || '';
 const N8N_PASSWORD = process.env.N8N_PASSWORD || '';
 
 export async function POST(req: NextRequest) {
-  // Vérifier que l'utilisateur est authentifié
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+  // Vérifier authentification + permission use_ai
+  let user: any;
+  try {
+    const result = await requirePermission('use_ai');
+    user = result.user;
+  } catch {
+    return NextResponse.json({ error: 'Non autorisé' }, { status: 403 });
   }
 
   try {
@@ -33,12 +35,12 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         message,
-        sessionId: sessionId || session.user.id || 'default',
+        sessionId: sessionId || user.id || 'default',
         user: {
-          id: (session.user as any).id,
-          name: session.user.name,
-          email: session.user.email,
-          role: (session.user as any).role,
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
         },
       }),
     });

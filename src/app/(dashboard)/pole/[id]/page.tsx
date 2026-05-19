@@ -1,9 +1,15 @@
 import { getPoleData } from '@/lib/actions';
+import { requireAnyPermission } from '@/lib/permissions';
 import { getStatutDossierLabel } from '@/lib/utils';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 export default async function PolePage({ params }: { params: { id: string } }) {
+  try {
+    await requireAnyPermission(['read_all_poles', 'read_pole']);
+  } catch {
+    redirect('/');
+  }
   const { pole, clotures } = await getPoleData(params.id);
   if (!pole) redirect('/');
   const dosActifs = pole.dossiers.filter((d) => d.statut === 'EN_COURS');

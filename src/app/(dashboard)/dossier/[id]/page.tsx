@@ -1,10 +1,16 @@
 import { getDossierData } from '@/lib/actions';
+import { requirePermission } from '@/lib/permissions';
 import { redirect } from 'next/navigation';
 import { formatNumber, formatDuration, getStatutDossierLabel, getStatutTacheLabel } from '@/lib/utils';
 import Link from 'next/link';
 import { DossierClient, TaskActionButtons } from './client';
 
 export default async function DossierPage({ params }: { params: { id: string } }) {
+  try {
+    await requirePermission('read_dossier');
+  } catch {
+    redirect('/');
+  }
   const dossier = await getDossierData(params.id);
   if (!dossier) redirect('/');
 

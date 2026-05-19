@@ -6,7 +6,9 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Seeding PrintSeq database — Données démo MULTIPRINT v9.0...');
 
-  // ===== CLEAN =====
+  // ===== CLEAN (preserve users) =====
+  // Detach users from poles/ateliers before deleting them
+  await prisma.user.updateMany({ data: { poleId: null, atelierId: null } });
   await prisma.$transaction([
     prisma.rolePermission.deleteMany(),
     prisma.permission.deleteMany(),
@@ -27,13 +29,12 @@ async function main() {
     prisma.syncQueue.deleteMany(),
     prisma.parametreIntegration.deleteMany(),
     prisma.logAction.deleteMany(),
-    prisma.user.deleteMany(),
     prisma.operateur.deleteMany(),
     prisma.machine.deleteMany(),
     prisma.atelier.deleteMany(),
     prisma.pole.deleteMany(),
   ]);
-  console.log('✅ Base nettoyée');
+  console.log('✅ Base nettoyée (utilisateurs préservés)');
 
   const hash = async (pw: string) => bcrypt.hash(pw, 10);
 
@@ -129,42 +130,116 @@ async function main() {
   for (const l of oaLinks) await prisma.operateurAtelier.create({ data: l });
   console.log('✅ 10 Opérateur-Atelier links');
 
-  // ===== UTILISATEURS =====
+  // ===== UTILISATEURS (upsert — preserve existing users) =====
   const usersData = [
     { id: 'u_admin', email: 'admin@multiprint.cm', nom: 'Administrateur Système', motDePasse: await hash('admin'), role: Role.ADMINISTRATEUR },
-    { id: 'u_chef1', email: 'chef1@multiprint.cm', nom: 'Nana Robert', motDePasse: await hash('chef1'), role: Role.CHEF_ATELIER, poleId: 'pole_oe', atelierId: 'at_oe_imp' },
-    { id: 'u_cond1', email: 'cond1@multiprint.cm', nom: 'Mbarga Jean-Paul', motDePasse: await hash('cond1'), role: Role.CONDUCTEUR, poleId: 'pole_oe', atelierId: 'at_oe_imp' },
-    { id: 'u_resp1', email: 'resp1@multiprint.cm', nom: 'Tchuente Alain', motDePasse: await hash('resp1'), role: Role.RESPONSABLE_POLE, poleId: 'pole_oe' },
-    { id: 'u_chef2', email: 'chef2@multiprint.cm', nom: 'Sontsa Gabriel', motDePasse: await hash('chef2'), role: Role.CHEF_ATELIER, poleId: 'pole_hf', atelierId: 'at_hf_imp' },
+    { id: 'u_chef1', email: 'chef1@multiprint.cm', nom: 'Nana Robert', motDePasse: await hash('chef1'), role: Role.CHEF_ATELIER },
+    { id: 'u_cond1', email: 'cond1@multiprint.cm', nom: 'Mbarga Jean-Paul', motDePasse: await hash('cond1'), role: Role.CONDUCTEUR },
+    { id: 'u_resp1', email: 'resp1@multiprint.cm', nom: 'Tchuente Alain', motDePasse: await hash('resp1'), role: Role.RESPONSABLE_POLE },
+    { id: 'u_chef2', email: 'chef2@multiprint.cm', nom: 'Sontsa Gabriel', motDePasse: await hash('chef2'), role: Role.CHEF_ATELIER },
     { id: 'u_maint', email: 'maint1@multiprint.cm', nom: 'Biya Emmanuel', motDePasse: await hash('maint1'), role: Role.MAINTENANCE },
     { id: 'u_qc', email: 'qc1@multiprint.cm', nom: 'Onana Cécile', motDePasse: await hash('qc1'), role: Role.CONTROLE_QUALITE },
   ];
-  for (const u of usersData) await prisma.user.create({ data: u });
-  console.log('✅ 7 Utilisateurs créés');
+  for (const u of usersData) {
+    const existing = await prisma.user.findUnique({ where: { email: u.email } });
+    if (!existing) {
+      await prisma.user.create({ data: u });
+    }
+  }
+  console.log('✅ Utilisateurs upsertés (existants préservés)');
 
   // ===== PERMISSIONS =====
+  // Full CRUD granularity : create, read, update, delete per entity
   const permissions = [
-    { code: 'view_all_poles', libelle: 'Voir tous les pôles', groupe: 'navigation' },
-    { code: 'view_pole', libelle: 'Voir son pôle', groupe: 'navigation' },
-    { code: 'view_atelier', libelle: 'Voir un atelier', groupe: 'navigation' },
-    { code: 'view_dossier', libelle: 'Voir un dossier', groupe: 'navigation' },
+    // Navigation
+    { code: 'read_all_poles', libelle: 'Voir tous les pôles', groupe: 'navigation' },
+    // Dossiers
     { code: 'create_dossier', libelle: 'Créer un dossier', groupe: 'dossiers' },
-    { code: 'edit_dossier', libelle: 'Modifier un dossier', groupe: 'dossiers' },
+    { code: 'read_dossier', libelle: 'Voir un dossier', groupe: 'dossiers' },
+    { code: 'update_dossier', libelle: 'Modifier un dossier', groupe: 'dossiers' },
+    { code: 'delete_dossier', libelle: 'Supprimer un dossier', groupe: 'dossiers' },
     { code: 'close_dossier', libelle: 'Clôturer un dossier', groupe: 'dossiers' },
-    { code: 'manage_tasks', libelle: 'Gérer les tâches', groupe: 'production' },
-    { code: 'execute_tasks', libelle: 'Exécuter les tâches', groupe: 'production' },
-    { code: 'declare_production', libelle: 'Déclarer la production', groupe: 'production' },
-    { code: 'manage_stops', libelle: 'Gérer les arrêts', groupe: 'arrets' },
-    { code: 'manage_controls', libelle: 'Gérer les contrôles qualité', groupe: 'qualite' },
-    { code: 'manage_handover', libelle: 'Gérer les passations', groupe: 'production' },
-    { code: 'view_kpi', libelle: 'Voir les KPIs', groupe: 'reporting' },
-    { code: 'view_history', libelle: "Voir l'historique", groupe: 'reporting' },
-    { code: 'export_data', libelle: 'Exporter les données', groupe: 'reporting' },
+    // Tâches
+    { code: 'create_task', libelle: 'Créer une tâche', groupe: 'tasks' },
+    { code: 'read_task', libelle: 'Voir une tâche', groupe: 'tasks' },
+    { code: 'update_task', libelle: 'Modifier une tâche', groupe: 'tasks' },
+    { code: 'delete_task', libelle: 'Supprimer une tâche', groupe: 'tasks' },
+    { code: 'execute_task', libelle: 'Exécuter une tâche', groupe: 'tasks' },
+    // Déclarations de production
+    { code: 'create_declaration', libelle: 'Créer une déclaration', groupe: 'declarations' },
+    { code: 'read_declaration', libelle: 'Voir une déclaration', groupe: 'declarations' },
+    // Arrêts
+    { code: 'create_stop', libelle: 'Créer un arrêt', groupe: 'stops' },
+    { code: 'read_stop', libelle: 'Voir un arrêt', groupe: 'stops' },
+    { code: 'update_stop', libelle: 'Modifier un arrêt', groupe: 'stops' },
+    { code: 'delete_stop', libelle: 'Supprimer un arrêt', groupe: 'stops' },
+    // Contrôles qualité
+    { code: 'create_control', libelle: 'Créer un contrôle', groupe: 'controls' },
+    { code: 'read_control', libelle: 'Voir un contrôle', groupe: 'controls' },
+    { code: 'update_control', libelle: 'Modifier un contrôle', groupe: 'controls' },
+    { code: 'delete_control', libelle: 'Supprimer un contrôle', groupe: 'controls' },
+    // Passations
+    { code: 'create_handover', libelle: 'Créer une passation', groupe: 'handovers' },
+    { code: 'read_handover', libelle: 'Voir une passation', groupe: 'handovers' },
+    // Reporting
+    { code: 'read_kpi', libelle: 'Voir les KPIs', groupe: 'reporting' },
+    { code: 'read_history', libelle: "Voir l'historique", groupe: 'reporting' },
+    { code: 'create_export', libelle: 'Exporter les données', groupe: 'reporting' },
+    { code: 'read_export', libelle: 'Voir les exports', groupe: 'reporting' },
+    // Outils
     { code: 'use_ai', libelle: "Utiliser l'assistant IA", groupe: 'outils' },
-    { code: 'manage_users', libelle: 'Gérer les utilisateurs', groupe: 'admin' },
-    { code: 'manage_roles', libelle: 'Gérer les rôles et permissions', groupe: 'admin' },
-    { code: 'manage_referentials', libelle: 'Gérer les référentiels', groupe: 'admin' },
-    { code: 'view_logs', libelle: 'Voir les logs système', groupe: 'admin' },
+    // Admin - Utilisateurs
+    { code: 'create_user', libelle: 'Créer un utilisateur', groupe: 'users' },
+    { code: 'read_user', libelle: 'Voir un utilisateur', groupe: 'users' },
+    { code: 'update_user', libelle: 'Modifier un utilisateur', groupe: 'users' },
+    { code: 'delete_user', libelle: 'Supprimer un utilisateur', groupe: 'users' },
+    // Admin - Rôles & Permissions
+    { code: 'create_role', libelle: 'Créer un rôle/permission', groupe: 'roles' },
+    { code: 'read_role', libelle: 'Voir les rôles/permissions', groupe: 'roles' },
+    { code: 'update_role', libelle: 'Modifier un rôle/permission', groupe: 'roles' },
+    { code: 'delete_role', libelle: 'Supprimer un rôle/permission', groupe: 'roles' },
+    // Admin - Logs
+    { code: 'read_log', libelle: 'Voir les logs', groupe: 'logs' },
+    // Référentiels - Pôles
+    { code: 'create_pole', libelle: 'Créer un pôle', groupe: 'poles' },
+    { code: 'read_pole', libelle: 'Voir un pôle', groupe: 'poles' },
+    { code: 'update_pole', libelle: 'Modifier un pôle', groupe: 'poles' },
+    { code: 'delete_pole', libelle: 'Supprimer un pôle', groupe: 'poles' },
+    // Référentiels - Ateliers
+    { code: 'create_atelier', libelle: 'Créer un atelier', groupe: 'ateliers' },
+    { code: 'read_atelier', libelle: 'Voir un atelier', groupe: 'ateliers' },
+    { code: 'update_atelier', libelle: 'Modifier un atelier', groupe: 'ateliers' },
+    { code: 'delete_atelier', libelle: 'Supprimer un atelier', groupe: 'ateliers' },
+    // Référentiels - Machines
+    { code: 'create_machine', libelle: 'Créer une machine', groupe: 'machines' },
+    { code: 'read_machine', libelle: 'Voir une machine', groupe: 'machines' },
+    { code: 'update_machine', libelle: 'Modifier une machine', groupe: 'machines' },
+    { code: 'delete_machine', libelle: 'Supprimer une machine', groupe: 'machines' },
+    // Référentiels - Opérateurs
+    { code: 'create_operator', libelle: 'Créer un opérateur', groupe: 'operators' },
+    { code: 'read_operator', libelle: 'Voir un opérateur', groupe: 'operators' },
+    { code: 'update_operator', libelle: 'Modifier un opérateur', groupe: 'operators' },
+    { code: 'delete_operator', libelle: 'Supprimer un opérateur', groupe: 'operators' },
+    // Référentiels - Causes d'arrêt
+    { code: 'create_cause', libelle: "Créer une cause d'arrêt", groupe: 'causes' },
+    { code: 'read_cause', libelle: "Voir une cause d'arrêt", groupe: 'causes' },
+    { code: 'update_cause', libelle: "Modifier une cause d'arrêt", groupe: 'causes' },
+    { code: 'delete_cause', libelle: "Supprimer une cause d'arrêt", groupe: 'causes' },
+    // Référentiels - Checkpoints
+    { code: 'create_checkpoint', libelle: 'Créer un checkpoint', groupe: 'checkpoints' },
+    { code: 'read_checkpoint', libelle: 'Voir un checkpoint', groupe: 'checkpoints' },
+    { code: 'update_checkpoint', libelle: 'Modifier un checkpoint', groupe: 'checkpoints' },
+    { code: 'delete_checkpoint', libelle: 'Supprimer un checkpoint', groupe: 'checkpoints' },
+    // Référentiels - Config Tâches
+    { code: 'create_task_config', libelle: 'Créer une config. tâche', groupe: 'task_config' },
+    { code: 'read_task_config', libelle: 'Voir une config. tâche', groupe: 'task_config' },
+    { code: 'update_task_config', libelle: 'Modifier une config. tâche', groupe: 'task_config' },
+    { code: 'delete_task_config', libelle: 'Supprimer une config. tâche', groupe: 'task_config' },
+    // Référentiels - ERP
+    { code: 'create_erp_config', libelle: 'Créer une config. ERP', groupe: 'erp' },
+    { code: 'read_erp_config', libelle: 'Voir une config. ERP', groupe: 'erp' },
+    { code: 'update_erp_config', libelle: 'Modifier une config. ERP', groupe: 'erp' },
+    { code: 'delete_erp_config', libelle: 'Supprimer une config. ERP', groupe: 'erp' },
   ];
   for (const p of permissions) await prisma.permission.create({ data: p });
   console.log('✅ Permissions créées');
@@ -172,11 +247,40 @@ async function main() {
   // ===== ROLE-PERMISSIONS =====
   const rolePerms: Record<string, string[]> = {
     [Role.ADMINISTRATEUR]: permissions.map(p => p.code),
-    [Role.RESPONSABLE_POLE]: ['view_all_poles','view_pole','view_atelier','view_dossier','create_dossier','edit_dossier','close_dossier','view_kpi','view_history','export_data','use_ai'],
-    [Role.CHEF_ATELIER]: ['view_pole','view_atelier','view_dossier','create_dossier','edit_dossier','close_dossier','manage_tasks','declare_production','manage_stops','manage_controls','manage_handover','view_kpi','view_history','export_data','use_ai'],
-    [Role.CONDUCTEUR]: ['view_pole','view_atelier','view_dossier','execute_tasks','declare_production','manage_stops','manage_controls','manage_handover'],
-    [Role.MAINTENANCE]: ['view_all_poles','view_dossier','manage_stops','view_kpi','view_history'],
-    [Role.CONTROLE_QUALITE]: ['view_all_poles','view_dossier','manage_controls','view_kpi','view_history'],
+    [Role.RESPONSABLE_POLE]: [
+      'read_all_poles','read_dossier','create_dossier','update_dossier','close_dossier',
+      'read_task','read_declaration','read_stop','read_control','read_handover',
+      'read_kpi','read_history','create_export','read_export','use_ai',
+      'read_user','read_role','read_log',
+      'create_pole','read_pole','update_pole','delete_pole',
+      'create_atelier','read_atelier','update_atelier','delete_atelier',
+      'create_machine','read_machine','update_machine','delete_machine',
+      'create_operator','read_operator','update_operator','delete_operator',
+      'create_cause','read_cause','update_cause','delete_cause',
+      'create_checkpoint','read_checkpoint','update_checkpoint','delete_checkpoint',
+      'create_task_config','read_task_config','update_task_config','delete_task_config',
+      'create_erp_config','read_erp_config','update_erp_config','delete_erp_config',
+    ],
+    [Role.CHEF_ATELIER]: [
+      'read_pole','read_atelier','read_dossier','create_dossier','update_dossier','close_dossier',
+      'create_task','read_task','update_task','execute_task','create_declaration','read_declaration',
+      'create_stop','read_stop','update_stop','create_control','read_control','create_handover','read_handover',
+      'read_kpi','read_history','create_export','read_export','use_ai',
+      'read_machine','read_operator','read_cause','read_checkpoint','read_task_config',
+    ],
+    [Role.CONDUCTEUR]: [
+      'read_pole','read_atelier','read_dossier','execute_task','create_declaration','read_declaration',
+      'create_stop','read_stop','create_control','read_control','create_handover','read_handover',
+      'read_machine','read_operator',
+    ],
+    [Role.MAINTENANCE]: [
+      'read_all_poles','read_dossier','create_stop','read_stop','update_stop','delete_stop',
+      'read_kpi','read_history','read_machine','read_cause',
+    ],
+    [Role.CONTROLE_QUALITE]: [
+      'read_all_poles','read_dossier','create_control','read_control','update_control','delete_control',
+      'read_kpi','read_history','read_checkpoint',
+    ],
   };
   const allPerms = await prisma.permission.findMany();
   const permMap = new Map(allPerms.map(p => [p.code, p.id]));

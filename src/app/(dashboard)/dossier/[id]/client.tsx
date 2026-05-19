@@ -10,10 +10,19 @@ import {
   getCausesArret, getCheckpointsForPole, getOperateursForPole,
 } from '@/lib/actions';
 import { formatNumber, formatDuration } from '@/lib/utils';
+import { useSession } from 'next-auth/react';
+
+function useHasPerm(perm: string | string[]): boolean {
+  const { data: session } = useSession();
+  const perms: string[] = (session?.user as any)?.permissions || [];
+  if (Array.isArray(perm)) return perm.some((p) => perms.includes(p));
+  return perms.includes(perm);
+}
 
 export function TaskActionButtons({ taskId, statut, dossierId }: { taskId: string; statut: string; dossierId: string }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const canManageTasks = useHasPerm(['update_task', 'execute_task']);
 
   const handle = (action: string) => {
     if (action === 'nc') {
@@ -30,6 +39,8 @@ export function TaskActionButtons({ taskId, statut, dossierId }: { taskId: strin
       router.refresh();
     });
   };
+
+  if (!canManageTasks) return null;
 
   if (statut === 'EN_ATTENTE') {
     return (
@@ -206,19 +217,26 @@ export function DossierClient({ dossier }: { dossier: any }) {
 
   const closeModal = () => setModal(null);
 
+  const canEditDossier = useHasPerm('update_dossier');
+  const canDeclare = useHasPerm('create_declaration');
+  const canManageStops = useHasPerm('create_stop');
+  const canManageControls = useHasPerm('create_control');
+  const canManageHandover = useHasPerm('create_handover');
+  const canCloseDossier = useHasPerm('close_dossier');
+
   // ===== RENDER BUTTONS =====
   return (
     <>
       {/* Action buttons in header */}
-      {isAttente && <button onClick={handleStart} disabled={isPending} className="px-4 py-2 rounded-md font-semibold text-white text-[0.85rem] btn-gradient-green">▶️ Démarrer</button>}
+      {isAttente && canEditDossier && <button onClick={handleStart} disabled={isPending} className="px-4 py-2 rounded-md font-semibold text-white text-[0.85rem] btn-gradient-green">▶️ Démarrer</button>}
       {isEnCours && (
         <>
-          <button onClick={openDecl} className="px-3 py-1.5 rounded-md font-semibold text-white text-[0.8rem] btn-gradient-blue">📦 Déclarer</button>
-          {!activeStop && <button onClick={openStop} className="px-3 py-1.5 rounded-md font-semibold text-[0.8rem] bg-[var(--accent-red-dim)] text-[var(--accent-red)] border border-[rgba(239,68,68,0.2)]">⏹ Arrêt</button>}
-          {activeStop && <button onClick={() => openResume(activeStop.id)} className="px-3 py-1.5 rounded-md font-semibold text-white text-[0.8rem] btn-gradient-green">▶ Reprendre</button>}
-          <button onClick={openControl} className="px-3 py-1.5 rounded-md font-semibold text-[0.8rem] bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border-primary)]">🔍 Contrôle</button>
-          <button onClick={openPassation} className="px-3 py-1.5 rounded-md font-semibold text-[0.8rem] bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border-primary)]">🔄 Passation</button>
-          <button onClick={openCloture} className="px-3 py-1.5 rounded-md font-semibold text-white text-[0.8rem]" style={{ background: 'var(--accent-purple)' }}>🏁 Clôturer</button>
+          {canDeclare && <button onClick={openDecl} className="px-3 py-1.5 rounded-md font-semibold text-white text-[0.8rem] btn-gradient-blue">📦 Déclarer</button>}
+          {canManageStops && !activeStop && <button onClick={openStop} className="px-3 py-1.5 rounded-md font-semibold text-[0.8rem] bg-[var(--accent-red-dim)] text-[var(--accent-red)] border border-[rgba(239,68,68,0.2)]">⏹ Arrêt</button>}
+          {canManageStops && activeStop && <button onClick={() => openResume(activeStop.id)} className="px-3 py-1.5 rounded-md font-semibold text-white text-[0.8rem] btn-gradient-green">▶ Reprendre</button>}
+          {canManageControls && <button onClick={openControl} className="px-3 py-1.5 rounded-md font-semibold text-[0.8rem] bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border-primary)]">🔍 Contrôle</button>}
+          {canManageHandover && <button onClick={openPassation} className="px-3 py-1.5 rounded-md font-semibold text-[0.8rem] bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border-primary)]">🔄 Passation</button>}
+          {canCloseDossier && <button onClick={openCloture} className="px-3 py-1.5 rounded-md font-semibold text-white text-[0.8rem]" style={{ background: 'var(--accent-purple)' }}>🏁 Clôturer</button>}
         </>
       )}
 

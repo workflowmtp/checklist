@@ -1,9 +1,20 @@
 import { getAtelierData } from '@/lib/actions';
+import { requireAnyPermission } from '@/lib/permissions';
 import { getStatutDossierLabel } from '@/lib/utils';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 export default async function AtelierPage({ params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions);
+  const perms: string[] = (session?.user as any)?.permissions || [];
+  const canCreateDossier = perms.includes('create_dossier');
+  try {
+    await requireAnyPermission(['read_all_poles', 'read_pole', 'read_atelier']);
+  } catch {
+    redirect('/');
+  }
   const { atelier, clotures } = await getAtelierData(params.id);
   if (!atelier) redirect('/');
   const p = atelier.pole;
@@ -34,9 +45,11 @@ export default async function AtelierPage({ params }: { params: { id: string } }
       </div>
 
       {/* Quick Actions */}
-      <div className="quick-actions">
-        <Link href={`/dossier/nouveau?atelier_id=${atelier.id}&pole_id=${p.id}`} className="btn btn-primary">+ Nouveau dossier</Link>
-      </div>
+      {perms.includes('create_dossier') && (
+        <div className="quick-actions">
+          <Link href={`/dossier/nouveau?atelier_id=${atelier.id}&pole_id=${p.id}`} className="btn btn-primary">+ Nouveau dossier</Link>
+        </div>
+      )}
 
       {/* Dossiers */}
       <div className="section-block">

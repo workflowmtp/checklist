@@ -1,10 +1,16 @@
 import { Role } from '@prisma/client';
 import prisma from '@/lib/prisma';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 // Cache en mémoire pour éviter des requêtes DB à chaque vérification
 let permissionsCache: Map<Role, string[]> | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL = 60 * 1000; // 1 minute
+
+// Force fresh load on server restart (after seed changes)
+permissionsCache = null;
+cacheTimestamp = 0;
 
 async function loadPermissions(): Promise<Map<Role, string[]>> {
   const now = Date.now();
@@ -75,4 +81,30 @@ export function getRoleLabel(role: Role): string {
 
 export function getAllRoles(): Role[] {
   return Object.values(Role);
+}
+
+export async function requirePermission(action: string): Promise<{ user: any; allowed: true }> {
+  const session = await getServerSession(authOptions);
+  const user = (session as any)?.user;
+  if (!user) {
+    throw new Error('Authentification requise');
+  }
+  const perms: string[] = user.permissions || [];
+  if (perms.includes(action)) {
+    return { user, allowed: true };
+  }
+  throw new Error(`Permission refusée : ${action}`);
+}
+
+export async function requireAnyPermission(actions: string[]): Promise<{ user: any; allowed: true }> {
+  const session = await getServerSession(authOptions);
+  const user = (session as any)?.user;
+  if (!user) {
+    throw new Error('Authentification requise');
+  }
+  const perms: string[] = user.permissions || [];
+  if (actions.some((a) => perms.includes(a))) {
+    return { user, allowed: true };
+  }
+  throw new Error(`Permission refusée`);
 }
